@@ -1,0 +1,73 @@
+# ----------------------
+# Node.js / TypeScript
+# ----------------------
+node_modules/
+dist/
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+*.tgz
+
+# ----------------------
+# Environment / Secrets
+# ----------------------
+.env
+.env.*
+!.env.example   # ยกเว้นไฟล์ตัวอย่าง env
+
+# ----------------------
+# OS-specific files
+# ----------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ----------------------
+# IDE / Editor settings
+# ----------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# ----------------------
+# Docker
+# ----------------------
+docker-compose.override.yml
+*.pid
+*.seed
+
+# ----------------------
+# Uploads / temp storage
+# ----------------------
+uploads/
+tmp/
+logs/
+cache/
+debug/
+__pycache__/
+
+# ----------------------
+# Test / Reports
+# ----------------------
+*.lcov
+*.coverage
+coverage/
+.nyc_output/
+
+# ----------------------
+# Build artifacts / lock
+# ----------------------
+*.lock-wscript
+*.out
+*.obj
+*.so
+*.dll
+*.exe
