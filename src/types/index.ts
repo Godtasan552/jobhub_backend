@@ -1,4 +1,4 @@
-import { Document } from 'mongoose';
+import { Document , Types} from 'mongoose';
 import { Request } from 'express';
 
 /* ==============================
@@ -38,7 +38,7 @@ export interface IJob extends Document {
   budget: number;             // งบประมาณ
   duration: string;           // ระยะเวลาในการทำงาน
   deadline?: Date;            // วันสิ้นสุดรับงาน
-  employerId: string;         // ใครเป็นผู้ว่าจ้าง
+  employerId: Types.ObjectId;         // ใครเป็นผู้ว่าจ้าง
   workerId?: string;          // ใครเป็นคนทำงาน (อาจยังไม่มี)
   status: JobStatus;          // สถานะของงาน
   requirements?: string[];    // เงื่อนไขการจ้าง
