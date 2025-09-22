@@ -262,15 +262,4 @@ export interface JobStats {
   popularCategories: { category: string; count: number }[]; // หมวดหมู่ยอดนิยม
 }
 
-/*
-1.User สมัคร/ล็อกอิน → ข้อมูลเก็บใน IUser + JWT ใช้ AuthRequest / JWTPayload
-2.Employer สร้างงาน (Job) → เก็บใน IJob
-3.Worker สมัครงาน (JobApplication) → เก็บใน IJobApplication
-4.ถ้าได้รับเลือก → ทำงานตาม Milestones → เก็บใน IMilestone
-    -การจ่ายเงิน
-    -แบบครั้งเดียว (Transaction → job_payment)
-    -แบบแบ่งงาน (milestone_payment)
-    -แบบรายเดือน (Payroll)
-6.Message + Notification → ใช้ติดต่อสื่อสารและแจ้งเตือน
-7.ระบบเก็บ Transaction, Stats → เพื่อดูรายงานย้อนหลัง
-*/
+
