@@ -56,7 +56,7 @@ export type MilestoneStatus = 'unpaid' | 'in_progress' | 'completed' | 'paid';
 
 export interface IMilestone extends Document {
   _id: string;
-  jobId: string;              // อ้างอิงกลับไปที่งานหลัก
+  jobId: Types.ObjectId;              // อ้างอิงกลับไปที่งานหลัก
   title: string;
   description?: string;
   amount: number;             // เงินที่ต้องจ่าย milestone นี้
