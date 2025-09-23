@@ -47,6 +47,7 @@ export interface IJob extends Document {
   milestones?: string[];      // งานย่อย / milestone
   createdAt: Date;
   updatedAt: Date;
+  
 }
 
 /* ==============================
@@ -99,14 +100,15 @@ export interface ITransaction extends Document {
   jobId?: string;             // ถ้าเกี่ยวข้องกับงาน
   milestoneId?: string;       // ถ้าเกี่ยวข้องกับ milestone
   payrollId?: string;         // ถ้าเกี่ยวข้องกับ payroll
-  from: string;               // ใครจ่าย
-  to: string;                 // ใครรับ
+  from: Types.ObjectId;               // ใครจ่าย
+  to: Types.ObjectId;                 // ใครรับ
   amount: number;             // จำนวนเงิน
   status: TransactionStatus;  // สถานะธุรกรรม
   description?: string;       // คำอธิบาย
   reference?: string;         // หมายเลขอ้างอิง
   createdAt: Date;
   updatedAt: Date;
+  generateReference(): string;   // สร้างหมายเลขอ้างอิงแบบสุ่ม
 }
 
 /* ==============================
