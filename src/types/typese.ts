@@ -199,6 +199,7 @@ export interface ApiResponse<T = any> {
     total: number;
     totalPages: number;
   };
+  meta?: any; // เพิ่มตรงนี้
 }
 
 /* ==============================
