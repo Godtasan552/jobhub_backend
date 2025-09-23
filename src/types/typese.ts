@@ -57,7 +57,7 @@ export type MilestoneStatus = 'unpaid' | 'in_progress' | 'completed' | 'paid';
 
 export interface IMilestone extends Document {
   _id: string;
-  jobId: Types.ObjectId;              // อ้างอิงกลับไปที่งานหลัก
+  jobId: Types.ObjectId;      // อ้างอิงกลับไปที่งานหลัก
   title: string;
   description?: string;
   amount: number;             // เงินที่ต้องจ่าย milestone นี้
@@ -109,6 +109,8 @@ export interface ITransaction extends Document {
   createdAt: Date;
   updatedAt: Date;
   generateReference(): string;   // สร้างหมายเลขอ้างอิงแบบสุ่ม
+  _direction?: string;
+  direction?: string;
 }
 
 /* ==============================
@@ -116,16 +118,18 @@ export interface ITransaction extends Document {
    ============================== */
 export interface IMessage extends Document {
   _id: string;
-  fromUserId: string;         // ผู้ส่ง
-  toUserId: string;           // ผู้รับ
+  fromUserId: Types.ObjectId; // ผู้ส่ง
+  toUserId: Types.ObjectId;           // ผู้รับ
   jobId?: string;             // ผูกกับงาน (ถ้ามี)
   message: string;            // เนื้อความ
   messageType: 'text' | 'file' | 'image'; // ประเภทข้อความ
-  attachment?: string;        // ไฟล์แนบ
+  attachment?: string | null;       // ไฟล์แนบ
   read: boolean;              // อ่านแล้วหรือยัง
   readAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  _isFromMe?: boolean;
+  
 }
 
 /* ==============================
