@@ -139,7 +139,7 @@ export type NotificationType = 'job' | 'milestone' | 'payment' | 'chat' | 'syste
 
 export interface INotification extends Document {
   _id: string;
-  userId: string;             // ใครเป็นผู้รับแจ้งเตือน
+  userId: Types.ObjectId;             // ใครเป็นผู้รับแจ้งเตือน
   type: NotificationType;     // ประเภทการแจ้งเตือน
   title: string;              // หัวข้อ
   message: string;            // เนื้อหา
