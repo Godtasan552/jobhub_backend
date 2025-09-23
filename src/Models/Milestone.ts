@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { IMilestone } from '@/types/index';
+import { IMilestone } from '@/types/typese';
 
 // กำหนด type สำหรับ document ของ Milestone ที่รวม instance methods
 export type MilestoneDocument = IMilestone & Document & {
@@ -289,7 +289,7 @@ MilestoneSchema.pre('save', function(next) {
 // กำหนดให้ toJSON แปลง _id เป็น id และลบ __v
 MilestoneSchema.set('toJSON', {
   virtuals: true,
-  transform: function(doc, ret) {
+  transform: function(_, ret) {
     ret.id = ret._id;
     delete ret._id;
     delete ret.__v;

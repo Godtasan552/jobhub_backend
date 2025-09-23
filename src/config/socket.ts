@@ -1,7 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { JWTService } from './jwt';
-import { SocketUser } from '@/types/index';
+import { SocketUser } from '@/types/typese';
 
 export class SocketService {
   // ใช้เก็บ instance เดียวของ SocketService (Singleton)

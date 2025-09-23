@@ -1,6 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import bcrypt from 'bcrypt';
-import { IUser } from '@/types/index';
+import { IUser } from '@/types/typese';
 
 // สร้าง Mongoose Schema สำหรับ User
 const UserSchema = new Schema<IUser>({
