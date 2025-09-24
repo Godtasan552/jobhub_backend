@@ -20,7 +20,9 @@ export interface IUser extends Document {
   isActive: boolean;          // สถานะใช้งาน
   lastLoginAt?: Date;         // เวลาล็อกอินล่าสุด
   createdAt: Date;            // วันที่สร้าง
-  updatedAt: Date;            // วันที่อัปเดตล่าสุด
+  updatedAt: Date;      // วันที่แก้ไขล่าสุด    
+  comparePassword(password: string): Promise<boolean>; // บอกว่า user มี method นี้         
+  updateLastLogin(): Promise<void>; // บอกว่า user มี method นี้   
 }
 
 /* ==============================
