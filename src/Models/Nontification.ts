@@ -1,5 +1,5 @@
 import mongoose, { Schema ,Document } from 'mongoose';
-import { INotification } from '@/types/typese';
+import { INotification } from '@/types';
 
 // สร้าง schema สำหรับเก็บข้อมูลการแจ้งเตือนของผู้ใช้แต่ละคน
 const NotificationSchema = new Schema<INotification>({

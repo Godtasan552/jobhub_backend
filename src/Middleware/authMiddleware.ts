@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { JWTService } from '@/config/jwt';
-import { AuthRequest } from '@/types/typese';
+import { AuthRequest } from '@/types';
 import User from '../Models/User';
 import { responseHelper } from '@/utils/responseHelper';
 

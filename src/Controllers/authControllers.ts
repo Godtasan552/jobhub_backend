@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AuthRequest  } from '@/types/typese';
+import { AuthRequest  } from '@/types';
 import User from '../Models/User';
 import { JWTService } from '@/config/jwt';
 import { responseHelper } from '@/utils/responseHelper';

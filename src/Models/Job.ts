@@ -1,5 +1,5 @@
 import mongoose, { Schema, model, Document } from 'mongoose';
-import { IJob } from '@/types/typese';
+import { IJob } from '@/types';
 
 // สร้าง type สำหรับ document ของ Job ที่รวม instance methods และ virtual properties
 export type JobDocument = IJob & Document & {

@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { ApiResponse } from '@/types/typese';
+import { ApiResponse } from '@/types';
 
 /**
  * คลาส ResponseHelper สำหรับช่วยจัดการการตอบกลับ API
