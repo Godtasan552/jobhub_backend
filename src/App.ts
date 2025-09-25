@@ -17,7 +17,7 @@ import { globalErrorHandler, notFound, handleUncaughtException, handleUnhandledR
 // Import routes
 import authRoutes from '../src/routers/auth';
 import jobRoutes from '../src/routers/jobs';
-import walletRoutes from '@/routes/wallet';
+import walletRoutes from '../src/routers/wallet';
 import chatRoutes from '@/routes/chat';
 import notificationRoutes from '@/routes/notifications';
 
