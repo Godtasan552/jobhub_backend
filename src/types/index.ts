@@ -1,4 +1,4 @@
-import { Document , Types} from 'mongoose';
+import { Document , Types, Model} from 'mongoose';
 import { Request } from 'express';
 
 /* ==============================
@@ -20,9 +20,11 @@ export interface IUser extends Document {
   isActive: boolean;          // สถานะใช้งาน
   lastLoginAt?: Date;         // เวลาล็อกอินล่าสุด
   createdAt: Date;            // วันที่สร้าง
-  updatedAt: Date;      // วันที่แก้ไขล่าสุด    
+  updatedAt: Date;            // วันที่แก้ไขล่าสุด    
   comparePassword(password: string): Promise<boolean>; // บอกว่า user มี method นี้         
   updateLastLogin(): Promise<void>; // บอกว่า user มี method นี้   
+  updateWallet(amount: number, operation: 'add' | 'subtract'): Promise<void>;
+  getPublicProfile(): object;
 }
 
 /* ==============================
@@ -40,7 +42,7 @@ export interface IJob extends Document {
   budget: number;             // งบประมาณ
   duration: string;           // ระยะเวลาในการทำงาน
   deadline?: Date;            // วันสิ้นสุดรับงาน
-  employerId: Types.ObjectId;         // ใครเป็นผู้ว่าจ้าง
+  employerId: Types.ObjectId; // ใครเป็นผู้ว่าจ้าง
   workerId?: string;          // ใครเป็นคนทำงาน (อาจยังไม่มี)
   status: JobStatus;          // สถานะของงาน
   requirements?: string[];    // เงื่อนไขการจ้าง
@@ -49,7 +51,28 @@ export interface IJob extends Document {
   milestones?: string[];      // งานย่อย / milestone
   createdAt: Date;
   updatedAt: Date;
-  
+  // Instance methods
+  addApplicant(userId: string): boolean;
+  removeApplicant(userId: string): boolean;
+  assignWorker(workerId: string): Promise<void>;
+  completeJob(): Promise<void>;
+  cancelJob(): Promise<void>;
+  closeJob(): Promise<void>;
+  canUserApply(userId: string): boolean;
+  isEditable(): boolean;
+  addMilestone(milestoneId: string): void;
+}
+
+// Static methods interface for Job
+export interface IJobModel extends Model<IJob> {
+  findWithFilters(filters: any, options?: any): Promise<IJob[]>;
+  searchJobs(searchTerm: string): Promise<IJob[]>;
+  findByEmployer(employerId: string): Promise<IJob[]>;
+  findByWorker(workerId: string): Promise<IJob[]>;
+  findActiveJobs(): Promise<IJob[]>;
+  findByCategory(category: string): Promise<IJob[]>;
+  findByType(type: string): Promise<IJob[]>;
+  getJobStats(): Promise<any>;
 }
 
 /* ==============================
@@ -69,6 +92,10 @@ export interface IMilestone extends Document {
   paidAt?: Date;              // วันจ่ายเงิน
   createdAt: Date;
   updatedAt: Date;
+  // Instance methods
+  markCompleted(): Promise<void>;
+  markPaid(): Promise<void>;
+  canBePaid(): boolean;
 }
 
 /* ==============================
@@ -102,17 +129,21 @@ export interface ITransaction extends Document {
   jobId?: string;             // ถ้าเกี่ยวข้องกับงาน
   milestoneId?: string;       // ถ้าเกี่ยวข้องกับ milestone
   payrollId?: string;         // ถ้าเกี่ยวข้องกับ payroll
-  from: Types.ObjectId;               // ใครจ่าย
-  to: Types.ObjectId;                 // ใครรับ
+  from: Types.ObjectId;       // ใครจ่าย
+  to: Types.ObjectId;         // ใครรับ
   amount: number;             // จำนวนเงิน
   status: TransactionStatus;  // สถานะธุรกรรม
   description?: string;       // คำอธิบาย
   reference?: string;         // หมายเลขอ้างอิง
   createdAt: Date;
   updatedAt: Date;
-  generateReference(): string;   // สร้างหมายเลขอ้างอิงแบบสุ่ม
   _direction?: string;
   direction?: string;
+  // Instance methods
+  generateReference(): string;   // สร้างหมายเลขอ้างอิงแบบสุ่ม
+  complete(): Promise<void>;     // ทำเครื่องหมายว่า transaction สำเร็จ
+  fail(reason: string): Promise<void>;  // ทำเครื่องหมายว่า transaction ล้มเหลว
+  cancel(reason?: string): Promise<void>; // ยกเลิก transaction
 }
 
 /* ==============================
@@ -121,17 +152,19 @@ export interface ITransaction extends Document {
 export interface IMessage extends Document {
   _id: string;
   fromUserId: Types.ObjectId; // ผู้ส่ง
-  toUserId: Types.ObjectId;           // ผู้รับ
+  toUserId: Types.ObjectId;   // ผู้รับ
   jobId?: string;             // ผูกกับงาน (ถ้ามี)
   message: string;            // เนื้อความ
   messageType: 'text' | 'file' | 'image'; // ประเภทข้อความ
-  attachment?: string | null;       // ไฟล์แนบ
+  attachment?: string | null; // ไฟล์แนบ
   read: boolean;              // อ่านแล้วหรือยัง
   readAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   _isFromMe?: boolean;
-  
+  // Instance methods
+  markAsRead(): Promise<void>;
+  isFromUser(userId: string): boolean;
 }
 
 /* ==============================
@@ -141,7 +174,7 @@ export type NotificationType = 'job' | 'milestone' | 'payment' | 'chat' | 'syste
 
 export interface INotification extends Document {
   _id: string;
-  userId: Types.ObjectId;             // ใครเป็นผู้รับแจ้งเตือน
+  userId: Types.ObjectId;     // ใครเป็นผู้รับแจ้งเตือน
   type: NotificationType;     // ประเภทการแจ้งเตือน
   title: string;              // หัวข้อ
   message: string;            // เนื้อหา
@@ -152,6 +185,50 @@ export interface INotification extends Document {
   actionUrl?: string;         // ลิงก์กดไปดูรายละเอียด
   createdAt: Date;
   updatedAt: Date;
+  // Instance methods
+  markAsRead(): Promise<void>;
+}
+
+// Static methods interface for Notification
+export interface INotificationModel extends Model<INotification> {
+  createJobNotification(
+    userId: string, 
+    jobId: string, 
+    title: string, 
+    message: string, 
+    actionUrl?: string
+  ): Promise<INotification>;
+  
+  createMilestoneNotification(
+    userId: string, 
+    milestoneId: string, 
+    title: string, 
+    message: string, 
+    actionUrl?: string
+  ): Promise<INotification>;
+  
+  createPaymentNotification(
+    userId: string, 
+    transactionId: string, 
+    title: string, 
+    message: string, 
+    actionUrl?: string
+  ): Promise<INotification>;
+  
+  createChatNotification(
+    userId: string, 
+    messageId: string, 
+    title: string, 
+    message: string, 
+    actionUrl?: string
+  ): Promise<INotification>;
+  
+  createSystemNotification(
+    userId: string, 
+    title: string, 
+    message: string, 
+    actionUrl?: string
+  ): Promise<INotification>;
 }
 
 /* ==============================
@@ -170,6 +247,10 @@ export interface IJobApplication extends Document {
   respondedAt?: Date;         // วันได้รับการตอบกลับ
   createdAt: Date;
   updatedAt: Date;
+  // Instance methods
+  accept(): Promise<void>;
+  reject(reason?: string): Promise<void>;
+  withdraw(): Promise<void>;
 }
 
 /* ==============================
@@ -201,7 +282,7 @@ export interface ApiResponse<T = any> {
     total: number;
     totalPages: number;
   };
-  meta?: any; // เพิ่มตรงนี้
+  meta?: any;
 }
 
 /* ==============================
@@ -270,5 +351,3 @@ export interface JobStats {
   completionRate: number;     // อัตราการทำสำเร็จ
   popularCategories: { category: string; count: number }[]; // หมวดหมู่ยอดนิยม
 }
-
-

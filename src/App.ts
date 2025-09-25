@@ -15,8 +15,8 @@ import { SocketService } from '@/config/socket';
 import { globalErrorHandler, notFound, handleUncaughtException, handleUnhandledRejection, setupGracefulShutdown } from '@/middleware/errorHandler';
 
 // Import routes
-import authRoutes from '@/routes/auth';
-import jobRoutes from '@/routes/jobs';
+import authRoutes from '../src/routers/auth';
+import jobRoutes from '../src/routers/jobs';
 import walletRoutes from '@/routes/wallet';
 import chatRoutes from '@/routes/chat';
 import notificationRoutes from '@/routes/notifications';
