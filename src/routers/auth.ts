@@ -15,11 +15,11 @@ const authController = new AuthController();
 const profilePictureUpload = multer({
   storage: multer.diskStorage({
     // กำหนดโฟลเดอร์ปลายทางสำหรับเก็บไฟล์
-    destination: (req, file, cb) => {
+    destination: (_req, _file, cb) => {
       cb(null, UPLOAD_PATHS.PROFILE_PICTURES);
     },
     // กำหนดชื่อไฟล์ให้ไม่ซ้ำกันโดยใช้ timestamp และ random
-    filename: (req, file, cb) => {
+    filename: (_req, file, cb) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
       cb(null, `profile-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
@@ -30,7 +30,7 @@ const profilePictureUpload = multer({
     files: 1
   },
   // กำหนดประเภทไฟล์ที่อนุญาตให้อัพโหลด
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);

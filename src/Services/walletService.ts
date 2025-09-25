@@ -359,7 +359,7 @@ export class WalletService {
   /**
    * ฟังก์ชันจำลองการประมวลผลการจ่ายเงิน (mock)
    */
-  private async simulatePaymentProcessing(amount: number): Promise<{
+  private async simulatePaymentProcessing(_amount: number): Promise<{
     success: boolean;
     reason?: string;
   }> {

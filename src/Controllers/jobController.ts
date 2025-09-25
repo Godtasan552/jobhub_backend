@@ -9,7 +9,7 @@ import { responseHelper } from '@/utils/responseHelper'; // นำเข้า h
 import { catchAsync } from '../Middleware/errorHandler'; // นำเข้า middleware สำหรับจัดการ error ใน async function
 import { SUCCESS_MESSAGES, ERROR_MESSAGES, JOB_CATEGORIES } from '@/utils/constants'; // นำเข้าข้อความคงที่
 import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket เพื่อแจ้งเตือนแบบ real-time
-import { Document, Model, Types } from 'mongoose'; // นำเข้า type ของ mongoose
+// import { Document, Model, Types } from 'mongoose'; // นำเข้า type ของ mongoose
 
 export class JobController {
   private socketService = SocketService.getInstance(); // สร้าง instance ของ socketService สำหรับส่ง notification

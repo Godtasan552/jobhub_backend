@@ -83,7 +83,7 @@ export const authorize = (...roles: string[]) => {
  */
 export const optionalAuth = async (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -297,7 +297,7 @@ export const requireCompleteProfile = (minimumCompletion: number = 70) => {
  */
 export const refreshUser = async (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -323,7 +323,7 @@ export const refreshUser = async (
  * - ใช้สำหรับบันทึก action ต่าง ๆ ของ user
  */
 export const logActivity = (action: string) => {
-  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+  return (req: AuthRequest, _res: Response, next: NextFunction): void => {
     if (req.user) {
       console.log(`User ${req.user._id} performed action: ${action} at ${new Date().toISOString()}`);
     }

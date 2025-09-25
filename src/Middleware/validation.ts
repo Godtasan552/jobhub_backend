@@ -512,7 +512,7 @@ export const customValidators = {
 
                     case 'milestone':
                         const Milestone = (await import('../Models/Message')).default;
-                        const Job2 = (await import('../Models/Job')).default;
+                        // const _Job2 = (await import('../Models/Job')).default;
                         const milestone = await Milestone.findById(resourceId).populate('jobId'); // populate jobId
                         hasAccess = !!(milestone && (
                             (milestone.jobId as any).employerId.toString() === userId ||

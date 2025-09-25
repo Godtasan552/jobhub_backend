@@ -1,9 +1,9 @@
 import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
-import { AuthRequest, INotification, INotificationModel } from '@/types/index'; // นำเข้า type ที่เกี่ยวข้องกับ Notification
+import { AuthRequest, INotification } from '@/types/index'; // นำเข้า type ที่เกี่ยวข้องกับ Notification
 import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification
 import { responseHelper } from '@/utils/responseHelper'; // นำเข้า helper สำหรับตอบกลับ API
 import { catchAsync } from '../Middleware/errorHandler'; // นำเข้า middleware สำหรับจัดการ error
-import { SUCCESS_MESSAGES, ERROR_MESSAGES } from '@/utils/constants'; // นำเข้าข้อความคงที่
+import { SUCCESS_MESSAGES } from '@/utils/constants'; // นำเข้าข้อความคงที่
 import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket
 
 export class NotificationController {
@@ -227,7 +227,7 @@ export class NotificationController {
    * อัพเดท preferences การแจ้งเตือน (mock)
    */
   updatePreferences = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id; // รับ userId
+    // const userId = req.user!._id; // รับ userId
     const { preferences } = req.body; // รับ preferences
 
     // ตัวอย่าง mock (จริงๆควรบันทึกลง DB)

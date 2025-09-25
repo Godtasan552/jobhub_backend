@@ -13,8 +13,8 @@ dotenv.config();
  */
 export class JWTService {
     // กำหนดค่า secret และเวลาหมดอายุของ token จาก environment
-    private static JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-    private static JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
+    private static JWT_SECRET = process.env.JWT_SECRET || 'JWT_SECRET';
+    private static JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'JWT_REFRESH_SECRET';
     private static JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN as `${number}d` || '7d';
     private static JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN as `${number}d` || '30d';
 

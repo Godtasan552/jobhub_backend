@@ -236,7 +236,7 @@ UserSchema.virtual('profileCompletion').get(function() {
 
 // Transform output สำหรับ JSON
 UserSchema.set('toJSON', {
-  transform: function(_, ret) { //เปลี่ยน doc เป็น _ แล้วโค้ดทำงานได้เหมือนเดิม และ TypeScript จะไม่เตือนแล้วครับ
+  transform: function(_doc, ret) { //เปลี่ยน doc เป็น _ แล้วโค้ดทำงานได้เหมือนเดิม และ TypeScript จะไม่เตือนแล้วครับ
     ret.id = ret._id; // เปลี่ยน _id เป็น id
     delete ret._id;
     delete ret.passwordHash; // ลบ password hash
@@ -247,7 +247,7 @@ UserSchema.set('toJSON', {
 
 // Transform output สำหรับ Object
 UserSchema.set('toObject', {
-  transform: function(_, ret) { //เปลี่ยน doc เป็น _ แล้วโค้ดทำงานได้เหมือนเดิม และ TypeScript จะไม่เตือนแล้วครับ
+  transform: function(_doc, ret) { //เปลี่ยน doc เป็น _ แล้วโค้ดทำงานได้เหมือนเดิม และ TypeScript จะไม่เตือนแล้วครับ
     ret.id = ret._id;
     delete ret._id;
     delete ret.passwordHash;

@@ -253,8 +253,8 @@ MilestoneSchema.virtual('daysUntilDue').get(function (this: MilestoneDocument) {
   return this.getDaysUntilDue();
 });
 
-// คืนค่าว่า overdue หรือไม่ (เรียกใช้ method isOverdue)
-MilestoneSchema.virtual('isOverdue').get(function (this: MilestoneDocument) {
+// เปลี่ยนชื่อ virtual property เป็น overdueStatus เพื่อไม่ซ้ำกับ method
+MilestoneSchema.virtual('overdueStatus').get(function (this: MilestoneDocument) {
   return this.isOverdue();
 });
 

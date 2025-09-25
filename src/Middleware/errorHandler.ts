@@ -27,7 +27,7 @@ export const globalErrorHandler = (
   error: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   let err = { ...error }; // clone error object
   err.message = error.message; // เก็บข้อความ error
@@ -138,7 +138,7 @@ export const catchAsync = (fn: Function) => {
  * Handle 404 errors
  * middleware สำหรับจัดการ route ที่ไม่พบ
  */
-export const notFound = (req: Request, res: Response, next: NextFunction): void => {
+export const notFound = (req: Request, _res: Response, next: NextFunction): void => {
   const error = new AppError(`Route ${req.originalUrl} not found`, 404);
   next(error); // ส่ง error ต่อไปให้ globalErrorHandler
 };

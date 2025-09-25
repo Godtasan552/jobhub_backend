@@ -1,4 +1,4 @@
-import mongoose, { Schema, Types ,Document } from 'mongoose';
+import mongoose, { Schema  } from 'mongoose';
 import { ITransaction } from '@/types/index';
 
 // ================================
