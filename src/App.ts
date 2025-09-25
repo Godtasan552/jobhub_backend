@@ -12,7 +12,7 @@ import { initializeDatabase } from '@/config/database';
 import { SocketService } from '@/config/socket';
 
 // Import middleware
-import { globalErrorHandler, notFound, handleUncaughtException, handleUnhandledRejection, setupGracefulShutdown } from '@/middleware/errorHandler';
+import { globalErrorHandler, notFound, handleUncaughtException, handleUnhandledRejection, setupGracefulShutdown } from '../src/Middleware/errorHandler';
 
 // Import routes
 import authRoutes from '../src/routers/auth';
