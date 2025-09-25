@@ -617,7 +617,7 @@ export class JobController {
   /**
    * ดึงหมวดหมู่งานยอดนิยม
    */
-  getJobCategories = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
+  getJobCategories = catchAsync(async (_req: AuthRequest, res: Response): Promise<void> => {
     // ใช้ aggregate เพื่อรวมจำนวนงานแต่ละหมวดหมู่
     const categories = await Job.aggregate([
       { $match: { status: 'active' } },

@@ -79,7 +79,7 @@ class App {
     // Body parsing
     this.app.use(express.json({ 
       limit: '10mb',
-      verify: (req, res, buf) => {
+      verify: (req, _res, buf) => {
         (req as any).rawBody = buf;
       }
     }));
@@ -108,7 +108,7 @@ class App {
 
   private initializeRoutes(): void {
     // Health check
-    this.app.get('/health', (req, res) => {
+    this.app.get('/health', (_req, res) => {
       res.status(200).json({
         success: true,
         message: 'Server is running',
@@ -130,7 +130,7 @@ class App {
     this.app.use(API_CONFIG.BASE_PATH, apiRouter);
 
     // API documentation route
-    this.app.get('/api-docs', (req, res) => {
+    this.app.get('/api-docs', (_req, res) => {
       res.json({
         title: 'JobHub API Documentation',
         version: '1.0.0',
@@ -146,7 +146,7 @@ class App {
     });
 
     // Root route
-    this.app.get('/', (req, res) => {
+    this.app.get('/', (_req, res) => {
       res.json({
         success: true,
         message: 'Welcome to JobHub API',

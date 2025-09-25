@@ -330,7 +330,7 @@ export class AuthController {
   /**
    * ออกจากระบบ (ส่วนใหญ่ใช้สำหรับ client ลบ token ฝั่ง client)
    */
-  logout = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
+  logout = catchAsync(async (_req: AuthRequest, res: Response): Promise<void> => {
     // ในระบบ JWT แบบ stateless การ logout จะทำที่ client เป็นหลัก
     // สามารถบันทึก event หรือ blacklist token ได้ถ้าต้องการ
     

@@ -362,7 +362,7 @@ TransactionSchema.pre('save', function (next) {
 // Transform JSON output
 TransactionSchema.set('toJSON', {
     virtuals: true, // เอา virtual ด้วย
-    transform: function (doc, ret) {
+    transform: function (_doc, ret) {
         ret.id = ret._id; // เปลี่ยน _id เป็น id
         delete ret._id;
         delete ret.__v; // ลบ version

@@ -388,7 +388,7 @@ MessageSchema.pre('save', function (next) {
 // toJSON: แปลง _id เป็น id และลบ __v
 MessageSchema.set('toJSON', {
     virtuals: true,
-    transform: function (doc, ret) {
+    transform: function (_doc, ret) {
         ret.id = ret._id;
         delete ret._id;
         delete ret.__v;
