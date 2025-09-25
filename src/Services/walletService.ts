@@ -5,7 +5,7 @@ import Milestone from '../Models/Milestone'; // นำเข้าโมเด�
 import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification สำหรับแจ้งเตือน
 import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket เพื่อแจ้งเตือนแบบ real-time
 import { MOCK_PAYMENT_CONFIG, ERROR_MESSAGES } from '@/utils/constants'; // นำเข้าค่าคงที่ที่ใช้ในระบบ
-import { IUser, IJob, IMilestone, ITransaction, INotificationModel } from '@/types'; // นำเข้า type ที่เกี่ยวข้อง
+import { IUser, IJob, IMilestone, ITransaction, INotificationModel } from '@/types/index'; // นำเข้า type ที่เกี่ยวข้อง
 
 // กำหนด interface สำหรับข้อมูลที่ใช้ในการจ่ายเงินทั่วไป
 export interface PaymentRequest {

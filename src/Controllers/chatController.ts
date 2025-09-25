@@ -1,5 +1,5 @@
 import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
-import { AuthRequest, IMessage, IUser, IJob, INotificationModel } from '@/types'; // นำเข้า type ที่เกี่ยวข้อง
+import { AuthRequest, IMessage, IUser, IJob, INotificationModel } from '@/types/index'; // นำเข้า type ที่เกี่ยวข้อง
 import Message from '../Models/Message'; // นำเข้าโมเดล Message
 import User from '../Models/User'; // นำเข้าโมเดล User
 import Job from '../Models/Job'; // นำเข้าโมเดล Job

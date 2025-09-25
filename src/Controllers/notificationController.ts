@@ -1,5 +1,5 @@
 import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
-import { AuthRequest, INotification, INotificationModel } from '@/types'; // นำเข้า type ที่เกี่ยวข้องกับ Notification
+import { AuthRequest, INotification, INotificationModel } from '@/types/index'; // นำเข้า type ที่เกี่ยวข้องกับ Notification
 import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification
 import { responseHelper } from '@/utils/responseHelper'; // นำเข้า helper สำหรับตอบกลับ API
 import { catchAsync } from '../Middleware/errorHandler'; // นำเข้า middleware สำหรับจัดการ error

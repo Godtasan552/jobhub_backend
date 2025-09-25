@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { IMilestone } from '@/types';
+import { IMilestone } from '@/types/index';
 
 // กำหนด type สำหรับ document ของ Milestone ที่รวม instance methods
 export type MilestoneDocument = IMilestone & Document & {

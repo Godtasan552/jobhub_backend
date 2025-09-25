@@ -1,5 +1,5 @@
 import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
-import { AuthRequest } from '@/types'; // นำเข้า type ของ request ที่มี user
+import { AuthRequest } from '@/types/index'; // นำเข้า type ของ request ที่มี user
 import Job from '../Models/Job'; // นำเข้าโมเดล Job สำหรับจัดการงาน
 import { JobDocument } from '../Models/Job'; // นำเข้า type JobDocument สำหรับใช้งานกับ instance ของ Job
 import User from '../Models/User'; // นำเข้าโมเดล User สำหรับจัดการผู้ใช้

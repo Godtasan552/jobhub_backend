@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { JWTPayload } from '@/types';
+import { JWTPayload } from '@/types/index';
 import dotenv from 'dotenv';
 
 // โหลดค่าจาก .env

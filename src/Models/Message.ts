@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { IMessage } from '@/types';
+import { IMessage } from '@/types/index';
 
 // สร้าง schema สำหรับเก็บข้อความแชท
 const MessageSchema = new Schema<IMessage>({

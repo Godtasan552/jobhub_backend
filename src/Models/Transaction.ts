@@ -1,5 +1,5 @@
 import mongoose, { Schema, Types ,Document } from 'mongoose';
-import { ITransaction } from '@/types';
+import { ITransaction } from '@/types/index';
 
 // ================================
 // Define the Transaction Schema
