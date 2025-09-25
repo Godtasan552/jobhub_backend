@@ -18,8 +18,8 @@ import { globalErrorHandler, notFound, handleUncaughtException, handleUnhandledR
 import authRoutes from '../src/routers/auth';
 import jobRoutes from '../src/routers/jobs';
 import walletRoutes from '../src/routers/wallet';
-import chatRoutes from '@/routes/chat';
-import notificationRoutes from '@/routes/notifications';
+import chatRoutes from '../src/routers/chat';
+import notificationRoutes from '../src/routers/notification';
 
 // Import constants
 import { RATE_LIMITS, API_CONFIG } from '@/utils/constants';
