@@ -165,6 +165,7 @@ export interface IMessage extends Document {
   // Instance methods
   markAsRead(): Promise<void>;
   isFromUser(userId: string): boolean;
+  getChatRoomId(): string;
 }
 
 /* ==============================
