@@ -212,7 +212,7 @@ export interface INotificationModel extends Model<INotification> {
     transactionId: string, 
     title: string, 
     message: string, 
-    actionUrl?: string
+    actionUrl?: string | null 
   ): Promise<INotification>;
   
   createChatNotification(
