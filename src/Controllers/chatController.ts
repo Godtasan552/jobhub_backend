@@ -1,61 +1,62 @@
-import { Response } from 'express';
-import { AuthRequest, IMessage, IUser, IJob, INotificationModel } from '@/types';
-import Message from '../Models/Message';
-import User from '../Models/User';
-import Job from '../Models/Job';
-import Notification from '../Models/Nontification';
-import { responseHelper } from '@/utils/responseHelper';
-import { catchAsync } from '../Middleware/errorHandler';
-import { SUCCESS_MESSAGES, ERROR_MESSAGES } from '@/utils/constants';
-import { SocketService } from '@/config/socket';
+import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
+import { AuthRequest, IMessage, IUser, IJob, INotificationModel } from '@/types'; // นำเข้า type ที่เกี่ยวข้อง
+import Message from '../Models/Message'; // นำเข้าโมเดล Message
+import User from '../Models/User'; // นำเข้าโมเดล User
+import Job from '../Models/Job'; // นำเข้าโมเดล Job
+import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification
+import { responseHelper } from '@/utils/responseHelper'; // นำเข้า helper สำหรับตอบกลับ API
+import { catchAsync } from '../Middleware/errorHandler'; // นำเข้า middleware สำหรับจัดการ error
+import { SUCCESS_MESSAGES, ERROR_MESSAGES } from '@/utils/constants'; // นำเข้าข้อความคงที่
+import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket
 
 export class ChatController {
-  private socketService = SocketService.getInstance();
+  private socketService = SocketService.getInstance(); // สร้าง instance สำหรับ socket service
 
   /**
-   * Get all conversations for the current user
+   * ดึงรายชื่อห้องสนทนาทั้งหมดของผู้ใช้ปัจจุบัน
    */
   getConversations = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
+    const userId = req.user!._id; // รับ userId จาก token
 
-    const conversations = await (Message as any).findUserConversations(userId);
+    const conversations = await (Message as any).findUserConversations(userId); // ดึงห้องสนทนาทั้งหมด
 
+    // จัดรูปแบบข้อมูลห้องสนทนา
     const formattedConversations = conversations.map((conv: any) => ({
-      id: conv._id,
-      otherUser: conv.otherUser[0],
-      job: conv.job[0] || null,
+      id: conv._id, // id ห้อง
+      otherUser: conv.otherUser[0], // ข้อมูลผู้สนทนาอีกฝั่ง
+      job: conv.job[0] || null, // ข้อมูลงาน (ถ้ามี)
       lastMessage: {
-        content: conv.lastMessage,
-        type: conv.lastMessageType,
-        time: conv.lastMessageTime
+        content: conv.lastMessage, // ข้อความล่าสุด
+        type: conv.lastMessageType, // ประเภทข้อความล่าสุด
+        time: conv.lastMessageTime // เวลาข้อความล่าสุด
       },
-      unreadCount: conv.unreadCount,
-      totalMessages: conv.totalMessages
+      unreadCount: conv.unreadCount, // จำนวนข้อความที่ยังไม่ได้อ่าน
+      totalMessages: conv.totalMessages // จำนวนข้อความทั้งหมด
     }));
 
-    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, formattedConversations);
+    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, formattedConversations); // ส่งข้อมูลกลับ
   });
 
   /**
-   * Get messages in a specific conversation
+   * ดึงข้อความในห้องสนทนาเฉพาะระหว่าง user สองคน (และงาน)
    */
   getConversation = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { otherUserId } = req.params;
+    const userId = req.user!._id; // รับ userId
+    const { otherUserId } = req.params; // รับ id อีกฝั่ง
     const { 
       page = 1, 
       limit = 50, 
       jobId 
-    } = req.query;
+    } = req.query; // รับ query
 
-    // Verify the other user exists
+    // ตรวจสอบว่าผู้ใช้อีกฝั่งมีอยู่จริง
     const otherUser = await User.findById(otherUserId) as IUser | null;
     if (!otherUser) {
       responseHelper.notFound(res, 'User not found');
       return;
     }
 
-    // Get messages between users
+    // ดึงข้อความระหว่าง user สองคน (และงานถ้ามี)
     const messages = await (Message as any).findConversation(
       userId,
       otherUserId,
@@ -63,19 +64,20 @@ export class ChatController {
       {
         page: Number(page),
         limit: Number(limit),
-        sort: '-createdAt' // Latest first for pagination
+        sort: '-createdAt' // เรียงล่าสุดก่อน
       }
     );
 
-    // Add direction indicator and reverse for chronological order
+    // เพิ่ม field isFromMe และเรียงลำดับจากเก่าไปใหม่
     const messagesWithDirection = messages
       .map((message: IMessage) => {
         const msg = message.toJSON();
         msg.isFromMe = msg.fromUserId.toString() === userId;
         return msg;
       })
-      .reverse(); // Show oldest first
+      .reverse();
 
+    // นับจำนวนข้อความทั้งหมด
     const totalMessages = await Message.countDocuments({
       $or: [
         { fromUserId: userId, toUserId: otherUserId },
@@ -95,25 +97,26 @@ export class ChatController {
   });
 
   /**
-   * Send a message
+   * ส่งข้อความใหม่
    */
   sendMessage = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const fromUserId = req.user!._id;
-    const { toUserId, message, messageType = 'text', jobId, attachment } = req.body;
+    const fromUserId = req.user!._id; // ผู้ส่ง
+    const { toUserId, message, messageType = 'text', jobId, attachment } = req.body; // รับข้อมูล
 
-    // Validate recipient
+    // ตรวจสอบห้ามส่งหาตัวเอง
     if (fromUserId === toUserId) {
       responseHelper.error(res, ERROR_MESSAGES.CANNOT_MESSAGE_SELF || 'Cannot send message to yourself', 400);
       return;
     }
 
+    // ตรวจสอบผู้รับ
     const toUser = await User.findById(toUserId) as IUser | null;
     if (!toUser) {
       responseHelper.notFound(res, 'Recipient not found');
       return;
     }
 
-    // Validate job if provided
+    // ถ้ามี jobId ให้ตรวจสอบความเกี่ยวข้อง
     let job: IJob | null = null;
     if (jobId) {
       job = await Job.findById(jobId) as IJob | null;
@@ -122,7 +125,7 @@ export class ChatController {
         return;
       }
 
-      // Check if users are related to the job
+      // ตรวจสอบว่าทั้งสอง user เกี่ยวข้องกับงานนี้หรือไม่
       const isRelated = job.employerId.toString() === fromUserId ||
                        job.workerId?.toString() === fromUserId ||
                        job.applicants.includes(fromUserId) ||
@@ -136,7 +139,7 @@ export class ChatController {
       }
     }
 
-    // Create message
+    // สร้างข้อความใหม่
     const newMessage = new Message({
       fromUserId,
       toUserId,
@@ -146,9 +149,9 @@ export class ChatController {
       attachment
     });
 
-    await newMessage.save();
+    await newMessage.save(); // บันทึกข้อความ
 
-    // Populate the message for response
+    // ดึงข้อมูลที่ populate สำหรับตอบกลับ
     await newMessage.populate([
       { path: 'fromUserId', select: 'name email profilePic' },
       { path: 'toUserId', select: 'name email profilePic' },
@@ -157,7 +160,7 @@ export class ChatController {
 
     const populatedMessage = newMessage as IMessage;
 
-    // Create notification for recipient
+    // สร้าง notification ให้ผู้รับ
     await (Notification as INotificationModel).createChatNotification(
       toUserId,
       populatedMessage._id,
@@ -166,7 +169,7 @@ export class ChatController {
       `/chat/${fromUserId}`
     );
 
-    // Send real-time message via socket if method exists
+    // ส่งข้อความแบบ real-time ผ่าน socket (ถ้ามี method)
     if (typeof this.socketService.sendToRoom === 'function' && typeof populatedMessage.getChatRoomId === 'function') {
       const roomId = populatedMessage.getChatRoomId();
       this.socketService.sendToRoom(`chat:${roomId}`, 'receive_message', {
@@ -175,7 +178,7 @@ export class ChatController {
       });
     }
 
-    // Send notification via socket
+    // ส่ง notification ผ่าน socket
     if (typeof this.socketService.sendNotificationToUser === 'function') {
       this.socketService.sendNotificationToUser(toUserId, {
         type: 'chat',
@@ -186,21 +189,21 @@ export class ChatController {
     }
 
     const messageResponse = populatedMessage.toJSON();
-    messageResponse.isFromMe = true;
+    messageResponse.isFromMe = true; // ตอบกลับฝั่งผู้ส่ง
 
-    responseHelper.created(res, SUCCESS_MESSAGES.MESSAGE_SENT, messageResponse);
+    responseHelper.created(res, SUCCESS_MESSAGES.MESSAGE_SENT, messageResponse); // ส่งข้อมูลกลับ
   });
 
   /**
-   * Mark messages as read
+   * mark ข้อความว่าอ่านแล้ว
    */
   markMessagesAsRead = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { messageIds } = req.body;
+    const userId = req.user!._id; // ผู้ใช้
+    const { messageIds } = req.body; // รับ id ข้อความ
 
-    const updatedCount = await (Message as any).markMultipleAsRead(messageIds, userId);
+    const updatedCount = await (Message as any).markMultipleAsRead(messageIds, userId); // mark ว่าอ่านแล้ว
 
-    // Notify sender via socket about read status
+    // แจ้งเตือน sender ผ่าน socket ว่าข้อความถูกอ่าน
     if (updatedCount > 0) {
       const messages = await Message.find({ _id: { $in: messageIds } }) as IMessage[];
       const uniqueSenders = [...new Set(messages.map((msg: IMessage) => msg.fromUserId.toString()))];
@@ -223,23 +226,24 @@ export class ChatController {
   });
 
   /**
-   * Search messages
+   * ค้นหาข้อความในแชท
    */
   searchMessages = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
+    const userId = req.user!._id; // ผู้ใช้
     const { 
       q: searchTerm, 
       page = 1, 
       limit = 20, 
       jobId,
       withUserId 
-    } = req.query;
+    } = req.query; // รับ query
 
     if (!searchTerm) {
       responseHelper.error(res, 'Search term is required', 400);
       return;
     }
 
+    // ค้นหาข้อความ
     const messages = await (Message as any).searchMessages(
       userId,
       searchTerm as string,
@@ -251,13 +255,14 @@ export class ChatController {
       }
     );
 
-    // Add direction indicator
+    // เพิ่ม field isFromMe
     const messagesWithDirection = messages.map((message: IMessage) => {
       const msg = message.toJSON();
       msg.isFromMe = msg.fromUserId.toString() === userId;
       return msg;
     });
 
+    // นับจำนวนข้อความที่ค้นหาเจอ
     const total = await Message.countDocuments({
       $or: [
         { fromUserId: userId },
@@ -284,13 +289,13 @@ export class ChatController {
   });
 
   /**
-   * Get unread message count
+   * ดึงจำนวนข้อความที่ยังไม่ได้อ่าน
    */
   getUnreadCount = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
+    const userId = req.user!._id; // ผู้ใช้
 
-    const unreadCount = await (Message as any).getUnreadCount(userId);
-    const unreadByConversation = await (Message as any).getUnreadCountPerConversation(userId);
+    const unreadCount = await (Message as any).getUnreadCount(userId); // ดึงจำนวนที่ยังไม่ได้อ่านทั้งหมด
+    const unreadByConversation = await (Message as any).getUnreadCountPerConversation(userId); // ดึงแยกตามห้อง
 
     responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, {
       total: unreadCount,
@@ -299,13 +304,13 @@ export class ChatController {
   });
 
   /**
-   * Delete a message (sender only, within time limit)
+   * ลบข้อความ (เฉพาะผู้ส่ง และในเวลาที่กำหนด)
    */
   deleteMessage = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { id } = req.params;
+    const userId = req.user!._id; // ผู้ใช้
+    const { id } = req.params; // รับ id ข้อความ
 
-    const message = await Message.findById(id) as IMessage | null;
+    const message = await Message.findById(id) as IMessage | null; // ค้นหาข้อความ
     if (!message) {
       responseHelper.notFound(res, ERROR_MESSAGES.MESSAGE_NOT_FOUND || 'Message not found');
       return;
@@ -316,7 +321,7 @@ export class ChatController {
       return;
     }
 
-    // Check if message is too old to delete (e.g., older than 1 hour)
+    // ตรวจสอบว่าเกินเวลาลบหรือยัง (เช่น 1 ชั่วโมง)
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     if (message.createdAt < oneHourAgo) {
       responseHelper.error(res, 'Message is too old to delete', 400);
@@ -328,9 +333,9 @@ export class ChatController {
       return;
     }
 
-    await Message.findByIdAndDelete(id);
+    await Message.findByIdAndDelete(id); // ลบข้อความ
 
-    // Notify via socket if methods exist
+    // แจ้งเตือนผ่าน socket ถ้ามี method
     if (typeof this.socketService.sendToRoom === 'function' && typeof message.getChatRoomId === 'function') {
       const roomId = message.getChatRoomId();
       this.socketService.sendToRoom(`chat:${roomId}`, 'message_deleted', {
@@ -343,33 +348,26 @@ export class ChatController {
   });
 
   /**
-   * Block/Unblock user (prevent messaging)
+   * บล็อก/ปลดบล็อกผู้ใช้ (กันไม่ให้ส่งข้อความ)
    */
   toggleBlockUser = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { otherUserId } = req.params;
-    const { block } = req.body;
+    const userId = req.user!._id; // ผู้ใช้
+    const { otherUserId } = req.params; // id อีกฝั่ง
+    const { block } = req.body; // รับค่าบล็อก/ปลดบล็อก
 
     if (userId === otherUserId) {
       responseHelper.error(res, 'Cannot block yourself', 400);
       return;
     }
 
-    const otherUser = await User.findById(otherUserId) as IUser | null;
+    const otherUser = await User.findById(otherUserId) as IUser | null; // ตรวจสอบผู้ใช้
     if (!otherUser) {
       responseHelper.notFound(res, 'User not found');
       return;
     }
 
-    // This would require adding a blockedUsers field to User model
-    // For now, we'll just return success
-    // const user = await User.findById(userId);
-    // if (block) {
-    //   user.blockedUsers.push(otherUserId);
-    // } else {
-    //   user.blockedUsers = user.blockedUsers.filter(id => id.toString() !== otherUserId);
-    // }
-    // await user.save();
+    // หมายเหตุ: ต้องมี field blockedUsers ใน User model (ตัวอย่างนี้ mock)
+    // สามารถเพิ่ม/ลบ id ใน blockedUsers ได้ที่นี่
 
     responseHelper.success(
       res, 
@@ -378,18 +376,18 @@ export class ChatController {
   });
 
   /**
-   * Get message statistics
+   * ดึงสถิติข้อความ
    */
   getMessageStats = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
+    const userId = req.user!._id; // ผู้ใช้
 
-    const stats = await (Message as any).getMessageStats(userId);
+    const stats = await (Message as any).getMessageStats(userId); // ดึงสถิติ
 
-    // Get conversation count
+    // ดึงจำนวนห้องสนทนา
     const conversations = await (Message as any).findUserConversations(userId);
     const conversationCount = conversations.length;
 
-    // Get most active conversations
+    // ดึง 5 ห้องที่ active ที่สุด
     const activeConversations = await Message.aggregate([
       {
         $match: {
@@ -434,20 +432,20 @@ export class ChatController {
   });
 
   /**
-   * Start a new conversation (initiate chat with job context)
+   * เริ่มต้นห้องสนทนาใหม่ (ระบุ job ได้)
    */
   startConversation = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const fromUserId = req.user!._id;
-    const { toUserId, jobId, initialMessage } = req.body;
+    const fromUserId = req.user!._id; // ผู้เริ่มต้น
+    const { toUserId, jobId, initialMessage } = req.body; // รับข้อมูล
 
-    // Validate recipient
+    // ตรวจสอบผู้รับ
     const toUser = await User.findById(toUserId) as IUser | null;
     if (!toUser) {
       responseHelper.notFound(res, 'User not found');
       return;
     }
 
-    // Validate job if provided
+    // ตรวจสอบงานถ้ามี
     let job: IJob | null = null;
     if (jobId) {
       job = await Job.findById(jobId) as IJob | null;
@@ -457,7 +455,7 @@ export class ChatController {
       }
     }
 
-    // Check if conversation already exists
+    // ตรวจสอบว่ามีห้องสนทนาอยู่แล้วหรือไม่
     const existingMessages = await (Message as any).findConversation(
       fromUserId,
       toUserId,
@@ -467,7 +465,7 @@ export class ChatController {
 
     let conversation: any;
     if (existingMessages.length > 0) {
-      // Return existing conversation
+      // ถ้ามีแล้ว ส่งข้อมูลกลับ
       conversation = {
         exists: true,
         otherUser: toUser,
@@ -481,7 +479,7 @@ export class ChatController {
         })
       };
     } else {
-      // Send initial message if provided
+      // ถ้ายังไม่มี ส่งข้อความแรก (ถ้ามี)
       if (initialMessage) {
         const newMessage = new Message({
           fromUserId,
@@ -493,7 +491,7 @@ export class ChatController {
 
         await newMessage.save();
 
-        // Create notification
+        // สร้าง notification
         await (Notification as INotificationModel).createChatNotification(
           toUserId,
           newMessage._id,
