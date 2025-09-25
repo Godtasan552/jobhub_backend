@@ -1,71 +1,72 @@
-import { Response } from 'express';
-import { AuthRequest, IUser, IJob, IMilestone, ITransaction, INotificationModel } from '@/types';
-import User from '../Models/User';
-import Transaction from '../Models/Transaction';
-import Job from '../Models/Job';
-import Milestone from '../Models/Milestone';
-import Notification from '../Models/Nontification';
-import { responseHelper } from '@/utils/responseHelper';
-import { catchAsync } from '../Middleware/errorHandle';
-import { SUCCESS_MESSAGES, ERROR_MESSAGES, MOCK_PAYMENT_CONFIG } from '@/utils/constants';
-import { SocketService } from '@/config/socket';
-import { WalletService } from '../Services/walletService';
+import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
+import { AuthRequest, IUser, IJob, IMilestone, ITransaction, INotificationModel } from '@/types'; // นำเข้า type ที่เกี่ยวข้อง
+import User from '../Models/User'; // นำเข้าโมเดล User
+import Transaction from '../Models/Transaction'; // นำเข้าโมเดล Transaction
+import Job from '../Models/Job'; // นำเข้าโมเดล Job
+import Milestone from '../Models/Milestone'; // นำเข้าโมเดล Milestone
+import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification
+import { responseHelper } from '@/utils/responseHelper'; // นำเข้า helper สำหรับตอบกลับ API
+import { catchAsync } from '../Middleware/errorHandle'; // นำเข้า middleware สำหรับจัดการ error
+import { SUCCESS_MESSAGES, ERROR_MESSAGES, MOCK_PAYMENT_CONFIG } from '@/utils/constants'; // นำเข้าข้อความคงที่
+import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket
+import { WalletService } from '../Services/walletService'; // นำเข้า service สำหรับ wallet
 
 export class WalletController {
-  private socketService = SocketService.getInstance();
-  private walletService = new WalletService();
+  private socketService = SocketService.getInstance(); // สร้าง instance สำหรับ socket service
+  private walletService = new WalletService(); // สร้าง instance สำหรับ wallet service
 
   /**
-   * Get wallet balance and summary
+   * ดึงยอดเงินในกระเป๋าและสรุปข้อมูล
    */
   getWalletBalance = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
+    const userId = req.user!._id; // รับ userId จาก token
 
-    const user = await User.findById(userId) as IUser | null;
+    const user = await User.findById(userId) as IUser | null; // ค้นหาข้อมูลผู้ใช้
     if (!user) {
-      responseHelper.notFound(res, ERROR_MESSAGES.USER_NOT_FOUND);
+      responseHelper.notFound(res, ERROR_MESSAGES.USER_NOT_FOUND); // ถ้าไม่เจอผู้ใช้
       return;
     }
 
-    // Get transaction summary
+    // ดึงสถิติธุรกรรม
     const transactionStats = await (Transaction as any).getTransactionStats(userId);
     
-    // Get pending transactions
+    // ดึงธุรกรรมที่ pending
     const pendingTransactions = await Transaction.find({
       $or: [{ from: userId }, { to: userId }],
       status: 'pending'
     }).populate('from to', 'name email').limit(10) as ITransaction[];
 
+    // สร้างข้อมูล wallet สำหรับตอบกลับ
     const walletData = {
-      balance: user.wallet,
+      balance: user.wallet, // ยอดเงินคงเหลือ
       pendingIn: await Transaction.aggregate([
         { $match: { to: userId, status: 'pending' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]).then(result => result[0]?.total || 0),
+      ]).then(result => result[0]?.total || 0), // ยอดเงินที่รอรับ
       pendingOut: await Transaction.aggregate([
         { $match: { from: userId, status: 'pending' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]).then(result => result[0]?.total || 0),
-      totalEarned: transactionStats.completedVolume || 0,
-      recentTransactions: pendingTransactions,
-      stats: transactionStats
+      ]).then(result => result[0]?.total || 0), // ยอดเงินที่รอจ่าย
+      totalEarned: transactionStats.completedVolume || 0, // รายได้รวม
+      recentTransactions: pendingTransactions, // ธุรกรรมล่าสุด
+      stats: transactionStats // สถิติธุรกรรม
     };
 
-    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, walletData);
+    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, walletData); // ส่งข้อมูลกลับ
   });
 
   /**
-   * Get transaction history with filtering
+   * ดึงประวัติธุรกรรม พร้อม filter
    */
   getTransactionHistory = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
+    const userId = req.user!._id; // รับ userId
     const { 
       page = 1, 
       limit = 10, 
       type, 
       status, 
       direction = 'all' 
-    } = req.query;
+    } = req.query; // รับค่าจาก query
 
     const options = {
       page: Number(page),
@@ -78,6 +79,7 @@ export class WalletController {
     let transactions: ITransaction[];
     let total: number;
 
+    // เลือกดึงธุรกรรมตามทิศทาง
     switch (direction) {
       case 'sent':
         transactions = await (Transaction as any).findSentByUser(userId, options);
@@ -94,7 +96,7 @@ export class WalletController {
         });
     }
 
-    // Add direction indicator for each transaction
+    // เพิ่ม field direction ในแต่ละธุรกรรม
     const transactionsWithDirection = transactions.map(transaction => {
       const txn = transaction.toJSON();
       txn.direction = txn.from.toString() === userId ? 'sent' : 'received';
@@ -112,31 +114,32 @@ export class WalletController {
   });
 
   /**
-   * Send payment to another user
+   * ส่งเงินให้ผู้ใช้อื่น
    */
   sendPayment = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const fromUserId = req.user!._id;
-    const { toUserId, amount, description, type = 'bonus' } = req.body;
+    const fromUserId = req.user!._id; // ผู้ส่งเงิน
+    const { toUserId, amount, description, type = 'bonus' } = req.body; // รับข้อมูลจาก body
 
-    // Validate inputs
+    // ตรวจสอบห้ามโอนเงินให้ตัวเอง
     if (fromUserId === toUserId) {
       responseHelper.error(res, 'Cannot send payment to yourself', 400);
       return;
     }
 
+    // ตรวจสอบจำนวนเงิน
     if (amount <= 0) {
       responseHelper.error(res, 'Amount must be greater than 0', 400);
       return;
     }
 
-    // Check sender balance
+    // ตรวจสอบยอดเงินในกระเป๋าผู้ส่ง
     const sender = await User.findById(fromUserId) as IUser | null;
     if (!sender || sender.wallet < amount) {
       responseHelper.error(res, ERROR_MESSAGES.INSUFFICIENT_BALANCE, 400);
       return;
     }
 
-    // Check receiver exists
+    // ตรวจสอบผู้รับ
     const receiver = await User.findById(toUserId) as IUser | null;
     if (!receiver) {
       responseHelper.notFound(res, 'Receiver not found');
@@ -144,7 +147,7 @@ export class WalletController {
     }
 
     try {
-      // Process payment through wallet service
+      // ดำเนินการจ่ายเงินผ่าน walletService
       const transaction = await this.walletService.processPayment({
         from: fromUserId,
         to: toUserId,
@@ -153,7 +156,7 @@ export class WalletController {
         description
       });
 
-      // Send notifications
+      // สร้างแจ้งเตือนให้ผู้รับ
       await (Notification as INotificationModel).createPaymentNotification(
         toUserId,
         transaction._id,
@@ -162,6 +165,7 @@ export class WalletController {
         `/wallet/transactions/${transaction._id}`
       );
 
+      // สร้างแจ้งเตือนให้ผู้ส่ง
       await (Notification as INotificationModel).createPaymentNotification(
         fromUserId,
         transaction._id,
@@ -170,26 +174,26 @@ export class WalletController {
         `/wallet/transactions/${transaction._id}`
       );
 
-      // Send real-time notifications
+      // ส่งแจ้งเตือนแบบ real-time
       if (typeof this.socketService.sendPaymentNotification === 'function') {
         this.socketService.sendPaymentNotification(toUserId, amount, 'received', transaction._id);
         this.socketService.sendPaymentNotification(fromUserId, amount, 'sent', transaction._id);
       }
 
-      responseHelper.success(res, SUCCESS_MESSAGES.PAYMENT_SENT, transaction);
+      responseHelper.success(res, SUCCESS_MESSAGES.PAYMENT_SENT, transaction); // ตอบกลับสำเร็จ
     } catch (error: any) {
-      responseHelper.error(res, error.message || ERROR_MESSAGES.PAYMENT_FAILED, 500);
+      responseHelper.error(res, error.message || ERROR_MESSAGES.PAYMENT_FAILED, 500); // ตอบกลับ error
     }
   });
 
   /**
-   * Process job payment
+   * จ่ายเงินให้กับงาน
    */
   processJobPayment = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const employerId = req.user!._id;
-    const { jobId, amount, description } = req.body;
+    const employerId = req.user!._id; // ผู้จ้าง
+    const { jobId, amount, description } = req.body; // รับข้อมูลจาก body
 
-    const job = await Job.findOne({ _id: jobId, employerId }) as IJob | null;
+    const job = await Job.findOne({ _id: jobId, employerId }) as IJob | null; // ค้นหางาน
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
@@ -206,6 +210,7 @@ export class WalletController {
     }
 
     try {
+      // ดำเนินการจ่ายเงินผ่าน walletService
       const transaction = await this.walletService.processJobPayment({
         jobId: job._id,
         employerId,
@@ -214,30 +219,30 @@ export class WalletController {
         description: description || `Payment for job: ${job.title}`
       });
 
-      // Update job status if needed
-      // job.status = 'paid'; // if you have this status
+      // อาจจะอัพเดทสถานะงานเป็น paid (ถ้ามี)
+      // job.status = 'paid'; // ถ้ามีสถานะนี้
       // await job.save();
 
-      responseHelper.success(res, SUCCESS_MESSAGES.PAYMENT_SUCCESS, transaction);
+      responseHelper.success(res, SUCCESS_MESSAGES.PAYMENT_SUCCESS, transaction); // ตอบกลับสำเร็จ
     } catch (error: any) {
-      responseHelper.error(res, error.message || ERROR_MESSAGES.PAYMENT_FAILED, 500);
+      responseHelper.error(res, error.message || ERROR_MESSAGES.PAYMENT_FAILED, 500); // ตอบกลับ error
     }
   });
 
   /**
-   * Process milestone payment
+   * จ่ายเงิน milestone
    */
   processMilestonePayment = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const employerId = req.user!._id;
-    const { milestoneId } = req.body;
+    const employerId = req.user!._id; // ผู้จ้าง
+    const { milestoneId } = req.body; // รับ milestoneId จาก body
 
-    const milestone = await Milestone.findById(milestoneId).populate('jobId') as IMilestone | null;
+    const milestone = await Milestone.findById(milestoneId).populate('jobId') as IMilestone | null; // ค้นหา milestone
     if (!milestone) {
       responseHelper.notFound(res, 'Milestone not found');
       return;
     }
 
-    const job = milestone.jobId as any;
+    const job = milestone.jobId as any; // ข้อมูลงานที่ถูก populate
     if (job.employerId.toString() !== employerId) {
       responseHelper.error(res, 'Access denied', 403);
       return;
@@ -249,6 +254,7 @@ export class WalletController {
     }
 
     try {
+      // ดำเนินการจ่ายเงิน milestone ผ่าน walletService
       const transaction = await this.walletService.processMilestonePayment({
         milestoneId: milestone._id,
         employerId,
@@ -257,10 +263,10 @@ export class WalletController {
         description: `Milestone payment: ${milestone.title}`
       });
 
-      // Mark milestone as paid
+      // mark milestone เป็น paid
       await milestone.markPaid();
 
-      // Send notification
+      // ส่งแจ้งเตือนแบบ real-time
       if (typeof this.socketService.sendMilestoneUpdateNotification === 'function') {
         this.socketService.sendMilestoneUpdateNotification(
           job.workerId,
@@ -270,18 +276,18 @@ export class WalletController {
         );
       }
 
-      responseHelper.success(res, SUCCESS_MESSAGES.MILESTONE_PAID, transaction);
+      responseHelper.success(res, SUCCESS_MESSAGES.MILESTONE_PAID, transaction); // ตอบกลับสำเร็จ
     } catch (error: any) {
-      responseHelper.error(res, error.message || ERROR_MESSAGES.PAYMENT_FAILED, 500);
+      responseHelper.error(res, error.message || ERROR_MESSAGES.PAYMENT_FAILED, 500); // ตอบกลับ error
     }
   });
 
   /**
-   * Add funds to wallet (mock top-up)
+   * เติมเงินเข้ากระเป๋า (mock top-up)
    */
   addFunds = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { amount, paymentMethod = 'mock_card' } = req.body;
+    const userId = req.user!._id; // ผู้ใช้
+    const { amount, paymentMethod = 'mock_card' } = req.body; // รับข้อมูลจาก body
 
     if (amount <= 0) {
       responseHelper.error(res, 'Amount must be greater than 0', 400);
@@ -294,7 +300,7 @@ export class WalletController {
     }
 
     try {
-      // Mock payment processing
+      // จำลองการจ่ายเงิน (mock)
       const isSuccessful = Math.random() < MOCK_PAYMENT_CONFIG.SUCCESS_RATE;
       
       if (!isSuccessful) {
@@ -305,10 +311,10 @@ export class WalletController {
         return;
       }
 
-      // Simulate processing delay
+      // จำลองดีเลย์
       await new Promise(resolve => setTimeout(resolve, MOCK_PAYMENT_CONFIG.PROCESSING_TIME_MS));
 
-      // Add funds to wallet
+      // เติมเงินเข้ากระเป๋า
       const user = await User.findById(userId) as IUser | null;
       if (!user) {
         responseHelper.notFound(res, ERROR_MESSAGES.USER_NOT_FOUND);
@@ -317,10 +323,10 @@ export class WalletController {
 
       await user.updateWallet(amount, 'add');
 
-      // Create transaction record
+      // สร้างธุรกรรม
       const transaction = await Transaction.create({
         type: 'bonus',
-        from: userId, // Self-funding
+        from: userId, // เติมเงินให้ตัวเอง
         to: userId,
         amount,
         status: 'completed',
@@ -328,7 +334,7 @@ export class WalletController {
         reference: `TOP_UP_${Date.now()}`
       }) as ITransaction;
 
-      // Send notification
+      // แจ้งเตือน
       await (Notification as INotificationModel).createPaymentNotification(
         userId,
         transaction._id,
@@ -347,18 +353,18 @@ export class WalletController {
   });
 
   /**
-   * Withdraw funds from wallet (mock withdrawal)
+   * ถอนเงินออกจากกระเป๋า (mock withdrawal)
    */
   withdrawFunds = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { amount, withdrawalMethod = 'bank_transfer' } = req.body;
+    const userId = req.user!._id; // ผู้ใช้
+    const { amount, withdrawalMethod = 'bank_transfer' } = req.body; // รับข้อมูลจาก body
 
     if (amount <= 0) {
       responseHelper.error(res, 'Amount must be greater than 0', 400);
       return;
     }
 
-    const user = await User.findById(userId) as IUser | null;
+    const user = await User.findById(userId) as IUser | null; // ค้นหาผู้ใช้
     if (!user) {
       responseHelper.notFound(res, ERROR_MESSAGES.USER_NOT_FOUND);
       return;
@@ -370,7 +376,7 @@ export class WalletController {
     }
 
     try {
-      // Mock withdrawal processing
+      // จำลองการถอนเงิน (mock)
       const isSuccessful = Math.random() < MOCK_PAYMENT_CONFIG.SUCCESS_RATE;
       
       if (!isSuccessful) {
@@ -381,24 +387,24 @@ export class WalletController {
         return;
       }
 
-      // Simulate processing delay
+      // จำลองดีเลย์
       await new Promise(resolve => setTimeout(resolve, MOCK_PAYMENT_CONFIG.PROCESSING_TIME_MS));
 
-      // Deduct from wallet
+      // หักเงินออกจากกระเป๋า
       await user.updateWallet(amount, 'subtract');
 
-      // Create transaction record
+      // สร้างธุรกรรม
       const transaction = await Transaction.create({
         type: 'refund',
         from: userId,
-        to: userId, // Self-withdrawal
+        to: userId, // ถอนเงินให้ตัวเอง
         amount,
         status: 'completed',
         description: `Wallet withdrawal via ${withdrawalMethod}`,
         reference: `WITHDRAW_${Date.now()}`
       }) as ITransaction;
 
-      // Send notification
+      // แจ้งเตือน
       await (Notification as INotificationModel).createPaymentNotification(
         userId,
         transaction._id,
@@ -417,16 +423,16 @@ export class WalletController {
   });
 
   /**
-   * Get wallet statistics
+   * ดึงสถิติกระเป๋าเงิน
    */
   getWalletStats = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const { period = '30' } = req.query; // days
+    const userId = req.user!._id; // ผู้ใช้
+    const { period = '30' } = req.query; // รับช่วงเวลา (วัน)
 
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - Number(period));
+    startDate.setDate(startDate.getDate() - Number(period)); // คำนวณวันที่เริ่มต้น
 
-    // Get transaction statistics
+    // ดึงสถิติธุรกรรม
     const stats = await Transaction.aggregate([
       {
         $match: {
@@ -453,7 +459,7 @@ export class WalletController {
       }
     ]);
 
-    // Get monthly breakdown
+    // ดึงสถิติรายเดือน
     const monthlyStats = await Transaction.aggregate([
       {
         $match: {
@@ -484,21 +490,21 @@ export class WalletController {
     ]);
 
     const walletStats = {
-      period: `${period} days`,
-      summary: stats[0] || { totalReceived: 0, totalSent: 0, transactionCount: 0 },
-      monthlyBreakdown: monthlyStats,
-      netIncome: (stats[0]?.totalReceived || 0) - (stats[0]?.totalSent || 0)
+      period: `${period} days`, // ช่วงเวลา
+      summary: stats[0] || { totalReceived: 0, totalSent: 0, transactionCount: 0 }, // สรุป
+      monthlyBreakdown: monthlyStats, // รายเดือน
+      netIncome: (stats[0]?.totalReceived || 0) - (stats[0]?.totalSent || 0) // รายรับสุทธิ
     };
 
-    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, walletStats);
+    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, walletStats); // ส่งข้อมูลกลับ
   });
 
   /**
-   * Get transaction by ID
+   * ดึงธุรกรรมตาม ID
    */
   getTransactionById = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params;
-    const userId = req.user!._id;
+    const { id } = req.params; // รับ id ธุรกรรม
+    const userId = req.user!._id; // ผู้ใช้
 
     const transaction = await Transaction.findOne({
       _id: id,
@@ -507,7 +513,7 @@ export class WalletController {
     .populate('from', 'name email profilePic')
     .populate('to', 'name email profilePic')
     .populate('jobId', 'title')
-    .populate('milestoneId', 'title') as ITransaction | null;
+    .populate('milestoneId', 'title') as ITransaction | null; // ค้นหาธุรกรรม
 
     if (!transaction) {
       responseHelper.notFound(res, 'Transaction not found');
@@ -517,36 +523,36 @@ export class WalletController {
     const transactionData = transaction.toJSON();
     transactionData.direction = transactionData.from.toString() === userId ? 'sent' : 'received';
 
-    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, transactionData);
+    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, transactionData); // ส่งข้อมูลกลับ
   });
 
   /**
-   * Cancel pending transaction
+   * ยกเลิกธุรกรรมที่ pending
    */
   cancelTransaction = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params;
-    const userId = req.user!._id;
+    const { id } = req.params; // รับ id ธุรกรรม
+    const userId = req.user!._id; // ผู้ใช้
 
     const transaction = await Transaction.findOne({
       _id: id,
       from: userId,
       status: 'pending'
-    }) as ITransaction | null;
+    }) as ITransaction | null; // ค้นหาธุรกรรม
 
     if (!transaction) {
       responseHelper.notFound(res, 'Transaction not found or cannot be cancelled');
       return;
     }
 
-    await transaction.cancel();
+    await transaction.cancel(); // ยกเลิกธุรกรรม
 
-    // Refund amount to sender if it was already deducted
+    // คืนเงินให้ผู้ส่งถ้าถูกหักไปแล้ว
     const sender = await User.findById(userId) as IUser | null;
     if (sender) {
       await sender.updateWallet(transaction.amount, 'add');
     }
 
-    // Notify both parties
+    // แจ้งเตือนทั้งสองฝ่าย
     await (Notification as INotificationModel).createPaymentNotification(
       transaction.from.toString(),
       transaction._id,
@@ -563,20 +569,20 @@ export class WalletController {
       null
     );
 
-    responseHelper.success(res, 'Transaction cancelled successfully');
+    responseHelper.success(res, 'Transaction cancelled successfully'); // ตอบกลับสำเร็จ
   });
 
   /**
-   * Get pending payments (for employers to see what they owe)
+   * ดึงรายการที่รอจ่าย (สำหรับ employer)
    */
   getPendingPayments = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const userId = req.user!._id;
-    const userRole = req.user!.role;
+    const userId = req.user!._id; // ผู้ใช้
+    const userRole = req.user!.role; // บทบาทผู้ใช้
 
     let pendingPayments: any[] = [];
 
     if (userRole === 'employer') {
-      // Get completed milestones that haven't been paid
+      // ดึง milestone ที่เสร็จแต่ยังไม่ได้จ่าย
       const unpaidMilestones = await Milestone.find({ status: 'completed' })
         .populate({
           path: 'jobId',
@@ -596,7 +602,7 @@ export class WalletController {
           overdue: milestone.dueDate ? new Date() > milestone.dueDate : false
         }));
     } else {
-      // Get pending transactions to this worker
+      // ดึงธุรกรรมที่ pending สำหรับ worker
       pendingPayments = await Transaction.find({
         to: userId,
         status: 'pending'
@@ -606,6 +612,6 @@ export class WalletController {
       .populate('milestoneId', 'title') as ITransaction[];
     }
 
-    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, pendingPayments);
+    responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, pendingPayments); // ส่งข้อมูลกลับ
   });
 }
