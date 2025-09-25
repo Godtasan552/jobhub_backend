@@ -3,7 +3,7 @@ import { AuthRequest  } from '@/types';
 import User from '../Models/User';
 import { JWTService } from '@/config/jwt';
 import { responseHelper } from '@/utils/responseHelper';
-import { catchAsync } from '../Middleware/errorHandle';
+import { catchAsync } from '../Middleware/errorHandler';
 import { SUCCESS_MESSAGES, ERROR_MESSAGES } from '../utils/constants';
 
 // สร้างคลาส AuthController สำหรับจัดการฟังก์ชันเกี่ยวกับการยืนยันตัวตน

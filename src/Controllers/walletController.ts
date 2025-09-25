@@ -6,7 +6,7 @@ import Job from '../Models/Job'; // นำเข้าโมเดล Job
 import Milestone from '../Models/Milestone'; // นำเข้าโมเดล Milestone
 import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification
 import { responseHelper } from '@/utils/responseHelper'; // นำเข้า helper สำหรับตอบกลับ API
-import { catchAsync } from '../Middleware/errorHandle'; // นำเข้า middleware สำหรับจัดการ error
+import { catchAsync } from '../Middleware/errorHandler'; // นำเข้า middleware สำหรับจัดการ error
 import { SUCCESS_MESSAGES, ERROR_MESSAGES, MOCK_PAYMENT_CONFIG } from '@/utils/constants'; // นำเข้าข้อความคงที่
 import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket
 import { WalletService } from '../Services/walletService'; // นำเข้า service สำหรับ wallet

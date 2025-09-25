@@ -181,7 +181,7 @@ export interface INotification extends Document {
   referenceId?: string;       // อ้างอิง object อื่น เช่น jobId
   referenceType?: 'job' | 'milestone' | 'transaction' | 'message';
   read: boolean;
-  readAt?: Date;
+  readAt?: Date | null;
   actionUrl?: string;         // ลิงก์กดไปดูรายละเอียด
   createdAt: Date;
   updatedAt: Date;
