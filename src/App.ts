@@ -23,7 +23,8 @@ import notificationRoutes from '../src/routers/notification';
 
 // Import constants
 import { RATE_LIMITS, API_CONFIG } from '@/utils/constants';
-
+import serveFavicon from 'serve-favicon';
+import path from 'path';
 // Handle uncaught exceptions
 handleUncaughtException();
 
@@ -45,6 +46,7 @@ class App {
   }
 
   private initializeMiddleware(): void {
+    this.app.use(serveFavicon(path.join(__dirname, 'public', 'favicon.ico')));
     // Security middleware
     this.app.use(helmet({
       contentSecurityPolicy: {

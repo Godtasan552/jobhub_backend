@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // กำหนด MongoDB URI ใช้ค่า default ถ้า .env ไม่มี
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/jobhub';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/jobhub_test';
 
 // Database class ใช้ singleton pattern เพื่อให้มี instance เดียวทั่วระบบ
 class Database {
