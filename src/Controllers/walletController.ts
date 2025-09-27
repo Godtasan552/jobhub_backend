@@ -581,7 +581,7 @@ export class WalletController {
 
     let pendingPayments: any[] = [];
 
-    if (userRole === 'employer') {
+    if (userRole.includes('employer')) {
       // ดึง milestone ที่เสร็จแต่ยังไม่ได้จ่าย
       const unpaidMilestones = await Milestone.find({ status: 'completed' })
         .populate({
