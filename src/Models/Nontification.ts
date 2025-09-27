@@ -9,12 +9,12 @@ const NotificationSchema = new Schema<INotification>({
     ref: 'User',
     required: [true, 'User ID is required']
   },
-  // type: ประเภทของแจ้งเตือน (งาน, milestone, การเงิน, แชท, ระบบ)
+  // type: ประเภทของแจ้งเตือน (งาน, milestone, การเงิน, แชท, ระบบ, worker approval)
   type: {
     type: String,
     enum: {
-      values: ['job', 'milestone', 'payment', 'chat', 'system'],
-      message: 'Type must be one of: job, milestone, payment, chat, system'
+      values: ['job', 'milestone', 'payment', 'chat', 'system', 'worker_approval'],
+      message: 'Type must be one of: job, milestone, payment, chat, system, worker_approval'
     },
     required: [true, 'Notification type is required']
   },
@@ -37,10 +37,10 @@ const NotificationSchema = new Schema<INotification>({
     type: String,
     default: null
   },
-  // referenceType: ประเภทของข้อมูลที่อ้างอิง (job, milestone, transaction, message)
+  // referenceType: ประเภทของข้อมูลที่อ้างอิง (job, milestone, transaction, message, worker_application)
   referenceType: {
     type: String,
-    enum: ['job', 'milestone', 'transaction', 'message'],
+    enum: ['job', 'milestone', 'transaction', 'message', 'worker_application'],
     default: null
   },
   // read: สถานะอ่านแจ้งเตือน
@@ -307,6 +307,23 @@ NotificationSchema.statics.createSystemNotification = async function(
   });
 };
 
+// createWorkerApprovalNotification: สร้างแจ้งเตือนเกี่ยวกับการอนุมัติ worker
+NotificationSchema.statics.createWorkerApprovalNotification = async function(
+  userId: string,
+  title: string,
+  message: string,
+  actionUrl?: string
+) {
+  return await this.create({
+    userId,
+    type: 'worker_approval',
+    title,
+    message,
+    referenceType: 'worker_application',
+    actionUrl
+  });
+};
+
 // broadcastSystemNotification: ส่งแจ้งเตือนระบบไปยังผู้ใช้หลายคน (หรือทุกคน)
 NotificationSchema.statics.broadcastSystemNotification = async function(
   title: string,
@@ -384,21 +401,23 @@ NotificationSchema.virtual('timeAgo').get(function() {
 
 // icon: แสดงไอคอนตามประเภทแจ้งเตือน (ใช้สำหรับ UI)
 NotificationSchema.virtual('icon').get(function() {
-  const icons = {
+  const icons: Record<string, string> = {
     job: '💼',
     milestone: '🎯',
     payment: '💰',
     chat: '💬',
-    system: '🔔'
+    system: '🔔',
+    worker_approval: '✅'
   };
   return icons[this.type] || '📢';
 });
 
 // priority: ระดับความสำคัญของแจ้งเตือน (ใช้สำหรับ UI)
 NotificationSchema.virtual('priority').get(function() {
-  const priorities = {
+  const priorities: Record<string, string> = {
     payment: 'high',
     milestone: 'high',
+    worker_approval: 'high',
     job: 'medium',
     chat: 'low',
     system: 'low'
@@ -423,6 +442,9 @@ NotificationSchema.pre('save', function(next) {
         break;
       case 'message':
         this.actionUrl = `/chat/${this.referenceId}`;
+        break;
+      case 'worker_application':
+        this.actionUrl = `/profile`;
         break;
     }
   }

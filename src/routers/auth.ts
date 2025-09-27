@@ -4,7 +4,6 @@ import path from 'path';
 import { AuthController } from '../Controllers/authControllers';
 import { authenticate, authRateLimit } from '../Middleware/authMiddleware';
 import { validate, authSchemas, userSchemas, customValidators } from '../Middleware/validation';
-import { requireRole } from '../Middleware/RoleMiddleware';
 import { UPLOAD_PATHS, API_CONFIG } from '@/utils/constants';
 import Joi from 'joi';
 
