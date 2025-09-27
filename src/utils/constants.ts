@@ -168,7 +168,8 @@ export const ERROR_MESSAGES = {
   ACCESS_DENIED: 'Access denied', // ไม่มีสิทธิ์เข้าถึง
   SERVER_ERROR: 'Internal server error', // เซิร์ฟเวอร์ error
   RATE_LIMIT_EXCEEDED: 'Too many requests', // ส่ง request เกิน limit
-  MAINTENANCE_MODE: 'Service temporarily unavailable' // ระบบปิดปรับปรุง
+  MAINTENANCE_MODE: 'Service temporarily unavailable', // ระบบปิดปรับปรุง
+  AUTHENTICATION_REQUIRED: 'Authentication is required',
 };
 
 // Success Messages

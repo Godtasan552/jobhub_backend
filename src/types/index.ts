@@ -2,7 +2,7 @@ import { Document , Types, Model} from 'mongoose';
 import { Request } from 'express';
 
 /* ==============================
-   USER TYPES (ข้อมูลผู้ใช้งาน)
+   USER TYPES (ข้อมูลผู้ใช้งาน) - Updated for Multi-Role
    ============================== */
 export interface IUser extends Document {
   _id: string;                // รหัสผู้ใช้
@@ -10,7 +10,7 @@ export interface IUser extends Document {
   email: string;              // อีเมล
   passwordHash: string;       // รหัสผ่าน (เข้ารหัสแล้ว)
   wallet: number;             // กระเป๋าเงินในระบบ
-  role: 'employer' | 'worker';// บทบาท: ผู้ว่าจ้าง / ฟรีแลนซ์
+  role: ('employer' | 'worker' | 'admin')[]; // บทบาท: สามารถมีได้หลายบทบาท
   skills: string[];           // ทักษะของผู้ใช้
   categories: string[];       // หมวดหมู่ที่ถนัด
   profilePic?: string;        // รูปโปรไฟล์
@@ -20,18 +20,63 @@ export interface IUser extends Document {
   isActive: boolean;          // สถานะใช้งาน
   lastLoginAt?: Date;         // เวลาล็อกอินล่าสุด
   createdAt: Date;            // วันที่สร้าง
-  updatedAt: Date;            // วันที่แก้ไขล่าสุด    
-  comparePassword(password: string): Promise<boolean>; // บอกว่า user มี method นี้         
-  updateLastLogin(): Promise<void>; // บอกว่า user มี method นี้   
+  updatedAt: Date;            // วันที่แก้ไขล่าสุด
+  
+  // Worker approval fields
+  isWorkerApproved?: boolean;    // Admin อนุมัติ Worker แล้วหรือยัง
+  workerApprovedAt?: Date;       // วันที่อนุมัติ Worker
+  workerApprovedBy?: string;     // Admin คนไหนอนุมัติ
+  workerRejectionReason?: string; // เหตุผลถ้าถูกปฏิเสธ
+  workerApplicationDate?: Date;   // วันที่สมัครเป็น Worker
+  
+  // Admin fields
+  adminLevel?: 'super' | 'moderator'| undefined; // ระดับ Admin
+  createdBy?: string;            // ใครสร้าง (สำหรับ audit trail)
+  lastAdminAction?: Date;        // การกระทำล่าสุดของ admin
+  
+  // Original methods
+  comparePassword(password: string): Promise<boolean>;
+  updateLastLogin(): Promise<void>;
   updateWallet(amount: number, operation: 'add' | 'subtract'): Promise<void>;
   getPublicProfile(): object;
+  
+  // New role management methods
+  hasRole(roleType: 'employer' | 'worker' | 'admin'): boolean;
+  isEmployer(): boolean;
+  isWorker(): boolean;
+  isAdmin(): boolean;
+  isSuperAdmin(): boolean;
+  addRole(roleType: 'employer' | 'worker' | 'admin'): void;
+  removeRole(roleType: 'employer' | 'worker' | 'admin'): void;
+  
+  // Worker specific methods
+  checkWorkerApproved(): boolean;
+  canAcceptJobs(): boolean;
+  canApplyForJobs(): boolean;
+  
+  // Admin specific methods
+  canCreateAdmin(): boolean;
+  canManageUsers(): boolean;
+  canApproveWorkers(): boolean;
+}
+
+// Static methods interface for User
+export interface IUserModel extends Model<IUser> {
+  findByEmail(email: string): Promise<IUser | null>;
+  findActiveUsers(): Promise<IUser[]>;
+  findByRole(role: 'employer' | 'worker' | 'admin'): Promise<IUser[]>;
+  findBySkills(skills: string[]): Promise<IUser[]>;
+  findByCategories(categories: string[]): Promise<IUser[]>;
+  findPendingWorkers(): Promise<IUser[]>;
+  findApprovedWorkers(): Promise<IUser[]>;
+  getUserStats(): Promise<any>;
 }
 
 /* ==============================
-   JOB TYPES (ข้อมูลงาน)
+   JOB TYPES (ข้อมูลงาน) - Updated for role validation
    ============================== */
-export type JobType = 'freelance' | 'part-time' | 'contract' | 'full-time'; // ประเภทงาน
-export type JobStatus = 'active' | 'closed' | 'in_progress' | 'completed' | 'cancelled'; // สถานะงาน
+export type JobType = 'freelance' | 'part-time' | 'contract' | 'full-time';
+export type JobStatus = 'active' | 'closed' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface IJob extends Document {
   _id: string;
@@ -140,10 +185,10 @@ export interface ITransaction extends Document {
   _direction?: string;
   direction?: string;
   // Instance methods
-  generateReference(): string;   // สร้างหมายเลขอ้างอิงแบบสุ่ม
-  complete(): Promise<void>;     // ทำเครื่องหมายว่า transaction สำเร็จ
-  fail(reason: string): Promise<void>;  // ทำเครื่องหมายว่า transaction ล้มเหลว
-  cancel(reason?: string): Promise<void>; // ยกเลิก transaction
+  generateReference(): string;
+  complete(): Promise<void>;
+  fail(reason: string): Promise<void>;
+  cancel(reason?: string): Promise<void>;
 }
 
 /* ==============================
@@ -171,7 +216,7 @@ export interface IMessage extends Document {
 /* ==============================
    NOTIFICATION (การแจ้งเตือน)
    ============================== */
-export type NotificationType = 'job' | 'milestone' | 'payment' | 'chat' | 'system';
+export type NotificationType = 'job' | 'milestone' | 'payment' | 'chat' | 'system' | 'worker_approval';
 
 export interface INotification extends Document {
   _id: string;
@@ -180,7 +225,7 @@ export interface INotification extends Document {
   title: string;              // หัวข้อ
   message: string;            // เนื้อหา
   referenceId?: string;       // อ้างอิง object อื่น เช่น jobId
-  referenceType?: 'job' | 'milestone' | 'transaction' | 'message';
+  referenceType?: 'job' | 'milestone' | 'transaction' | 'message' | 'worker_application';
   read: boolean;
   readAt?: Date | null;
   actionUrl?: string;         // ลิงก์กดไปดูรายละเอียด
@@ -230,6 +275,13 @@ export interface INotificationModel extends Model<INotification> {
     message: string, 
     actionUrl?: string
   ): Promise<INotification>;
+  
+  createWorkerApprovalNotification(
+    userId: string, 
+    title: string, 
+    message: string, 
+    actionUrl?: string
+  ): Promise<INotification>;
 }
 
 /* ==============================
@@ -255,7 +307,29 @@ export interface IJobApplication extends Document {
 }
 
 /* ==============================
-   AUTH (การยืนยันตัวตน)
+   WORKER APPLICATION (การสมัครเป็น Worker)
+   ============================== */
+export interface IWorkerApplication extends Document {
+  _id: string;
+  userId: string;             // ผู้สมัคร
+  skills: string[];           // ทักษะ
+  categories: string[];       // หมวดหมู่
+  experience: string;         // ประสบการณ์
+  portfolio?: string;         // ผลงาน
+  hourlyRate?: number;        // ราคาต่อชั่วโมง
+  availability: 'full-time' | 'part-time' | 'flexible'; // ความพร้อม
+  coverLetter?: string;       // จดหมายแนะนำตัว
+  status: 'pending' | 'approved' | 'rejected';
+  appliedAt: Date;            // วันสมัคร
+  reviewedAt?: Date;          // วันที่ admin review
+  reviewedBy?: string;        // admin คนไหน review
+  rejectionReason?: string;   // เหตุผลถ้าถูกปฏิเสธ
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/* ==============================
+   AUTH (การยืนยันตัวตน) - Updated for multi-role
    ============================== */
 export interface AuthRequest extends Request {
   user?: IUser;               // เก็บข้อมูล user หลังจากตรวจสอบ JWT
@@ -264,7 +338,7 @@ export interface AuthRequest extends Request {
 export interface JWTPayload {
   userId: string;
   email: string;
-  role: string;               // บทบาท (ใช้ตรวจสอบสิทธิ์)
+  role: ('employer' | 'worker' | 'admin')[]; // เปลี่ยนเป็น array
   iat?: number;
   exp?: number;
 }
@@ -351,4 +425,36 @@ export interface JobStats {
   averageBudget: number;      // งบประมาณเฉลี่ย
   completionRate: number;     // อัตราการทำสำเร็จ
   popularCategories: { category: string; count: number }[]; // หมวดหมู่ยอดนิยม
+}
+
+/* ==============================
+   ADMIN DASHBOARD TYPES
+   ============================== */
+export interface AdminDashboardStats {
+  users: {
+    total: number;
+    employers: number;
+    workers: number;
+    pendingWorkers: number;
+    approvedWorkers: number;
+    admins: number;
+  };
+  jobs: {
+    total: number;
+    active: number;
+    completed: number;
+    inProgress: number;
+  };
+  transactions: {
+    total: number;
+    totalAmount: number;
+    pending: number;
+    completed: number;
+  };
+  recentActivity: {
+    newUsers: number;
+    newJobs: number;
+    completedJobs: number;
+    pendingApprovals: number;
+  };
 }

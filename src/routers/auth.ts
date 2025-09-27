@@ -4,12 +4,26 @@ import path from 'path';
 import { AuthController } from '../Controllers/authControllers';
 import { authenticate, authRateLimit } from '../Middleware/authMiddleware';
 import { validate, authSchemas, userSchemas, customValidators } from '../Middleware/validation';
+import { requireRole } from '../Middleware/RoleMiddleware';
 import { UPLOAD_PATHS, API_CONFIG } from '@/utils/constants';
+import Joi from 'joi';
 
 // สร้าง router สำหรับจัดการเส้นทาง auth
 const router = Router();
 // สร้าง instance ของ AuthController เพื่อเรียกใช้เมธอดต่าง ๆ
 const authController = new AuthController();
+
+// ==================== VALIDATION SCHEMAS ====================
+
+// Schema สำหรับการสมัครเป็น worker
+const applyWorkerSchema = Joi.object({
+  skills: Joi.array().items(Joi.string().min(1).max(50)).min(1).max(20).required(),
+  categories: Joi.array().items(Joi.string().min(1).max(50)).min(1).max(10).required(),
+  experience: Joi.string().min(50).max(1000).optional(),
+  portfolio: Joi.string().uri().optional(),
+  hourlyRate: Joi.number().min(0).max(10000).optional(),
+  availability: Joi.string().valid('full-time', 'part-time', 'flexible').default('flexible')
+});
 
 // กำหนดการตั้งค่า multer สำหรับอัพโหลดรูปโปรไฟล์
 const profilePictureUpload = multer({
@@ -40,17 +54,19 @@ const profilePictureUpload = multer({
   }
 });
 
+// ==================== PUBLIC ROUTES ====================
+
 /**
  * @route   POST /api/v1/auth/register
- * @desc    ลงทะเบียนผู้ใช้ใหม่
+ * @desc    ลงทะเบียนผู้ใช้ใหม่ (default role: employer)
  * @access  Public
  */
 router.post(
-  '/register', // เส้นทางสำหรับลงทะเบียน
-  authRateLimit(), // จำกัดจำนวน request
-  validate(authSchemas.register), // ตรวจสอบข้อมูลที่ส่งมา
-  customValidators.validateUniqueEmail, // ตรวจสอบ email ซ้ำ
-  authController.register // เรียกใช้เมธอด register
+  '/register',
+  authRateLimit(),
+  validate(authSchemas.register),
+  customValidators.validateUniqueEmail,
+  authController.register
 );
 
 /**
@@ -59,10 +75,10 @@ router.post(
  * @access  Public
  */
 router.post(
-  '/login', // เส้นทางสำหรับเข้าสู่ระบบ
-  authRateLimit(), // จำกัดจำนวน request
-  validate(authSchemas.login), // ตรวจสอบข้อมูลที่ส่งมา
-  authController.login // เรียกใช้เมธอด login
+  '/login',
+  authRateLimit(),
+  validate(authSchemas.login),
+  authController.login
 );
 
 /**
@@ -71,10 +87,12 @@ router.post(
  * @access  Public
  */
 router.post(
-  '/refresh-token', // เส้นทางสำหรับรีเฟรช token
-  validate(authSchemas.refreshToken), // ตรวจสอบข้อมูล token
-  authController.refreshToken // เรียกใช้เมธอด refreshToken
+  '/refresh-token',
+  validate(authSchemas.refreshToken),
+  authController.refreshToken
 );
+
+// ==================== PRIVATE ROUTES ====================
 
 /**
  * @route   POST /api/v1/auth/logout
@@ -82,9 +100,9 @@ router.post(
  * @access  Private
  */
 router.post(
-  '/logout', // เส้นทางสำหรับ logout
-  authenticate, // ตรวจสอบ token ก่อน
-  authController.logout // เรียกใช้เมธอด logout
+  '/logout',
+  authenticate,
+  authController.logout
 );
 
 /**
@@ -93,9 +111,9 @@ router.post(
  * @access  Private
  */
 router.get(
-  '/profile', // เส้นทางสำหรับดึงโปรไฟล์
-  authenticate, // ตรวจสอบ token ก่อน
-  authController.getProfile // เรียกใช้เมธอด getProfile
+  '/profile',
+  authenticate,
+  authController.getProfile
 );
 
 /**
@@ -104,10 +122,10 @@ router.get(
  * @access  Private
  */
 router.put(
-  '/profile', // เส้นทางสำหรับอัพเดทโปรไฟล์
-  authenticate, // ตรวจสอบ token ก่อน
-  validate(userSchemas.updateProfile), // ตรวจสอบข้อมูลที่ส่งมา
-  authController.updateProfile // เรียกใช้เมธอด updateProfile
+  '/profile',
+  authenticate,
+  validate(userSchemas.updateProfile),
+  authController.updateProfile
 );
 
 /**
@@ -116,10 +134,10 @@ router.put(
  * @access  Private
  */
 router.post(
-  '/change-password', // เส้นทางสำหรับเปลี่ยนรหัสผ่าน
-  authenticate, // ตรวจสอบ token ก่อน
-  validate(authSchemas.changePassword), // ตรวจสอบข้อมูลที่ส่งมา
-  authController.changePassword // เรียกใช้เมธอด changePassword
+  '/change-password',
+  authenticate,
+  validate(authSchemas.changePassword),
+  authController.changePassword
 );
 
 /**
@@ -128,11 +146,56 @@ router.post(
  * @access  Private
  */
 router.post(
-  '/upload-profile-picture', // เส้นทางสำหรับอัพโหลดรูปโปรไฟล์
-  authenticate, // ตรวจสอบ token ก่อน
-  profilePictureUpload.single('profilePicture'), // ใช้ multer รับไฟล์
-  authController.uploadProfilePicture // เรียกใช้เมธอด uploadProfilePicture
+  '/upload-profile-picture',
+  authenticate,
+  profilePictureUpload.single('profilePicture'),
+  authController.uploadProfilePicture
 );
+
+// ==================== WORKER APPLICATION ROUTES ====================
+
+/**
+ * @route   POST /api/v1/auth/apply-worker
+ * @desc    สมัครเป็น Worker (ต้องเป็น user ที่ล็อกอินแล้ว)
+ * @access  Private
+ */
+router.post(
+  '/apply-worker',
+  authenticate,
+  validate(applyWorkerSchema),
+  authController.applyWorker
+);
+
+/**
+ * @route   GET /api/v1/auth/worker-status
+ * @desc    ตรวจสอบสถานะการสมัครเป็น Worker
+ * @access  Private
+ */
+router.get(
+  '/worker-status',
+  authenticate,
+  authController.getWorkerStatus
+);
+
+// ==================== ADMIN/TESTING ROUTES ====================
+
+/**
+ * @route   POST /api/v1/auth/switch-role
+ * @desc    เปลี่ยน role (สำหรับ admin หรือ testing)
+ * @access  Private - Admin only for other users
+ */
+router.post(
+  '/switch-role',
+  authenticate,
+  validate(Joi.object({
+    targetRole: Joi.string().valid('employer', 'worker', 'admin').required(),
+    action: Joi.string().valid('add', 'remove').required(),
+    userId: Joi.string().optional() // ถ้าไม่ส่งจะเป็นการเปลี่ยน role ตัวเอง
+  })),
+  authController.switchRole
+);
+
+// ==================== ACCOUNT MANAGEMENT ====================
 
 /**
  * @route   POST /api/v1/auth/deactivate-account
@@ -140,9 +203,9 @@ router.post(
  * @access  Private
  */
 router.post(
-  '/deactivate-account', // เส้นทางสำหรับปิดบัญชี
-  authenticate, // ตรวจสอบ token ก่อน
-  authController.deactivateAccount // เรียกใช้เมธอด deactivateAccount
+  '/deactivate-account',
+  authenticate,
+  authController.deactivateAccount
 );
 
 /**
@@ -151,9 +214,9 @@ router.post(
  * @access  Private
  */
 router.get(
-  '/stats', // เส้นทางสำหรับดึงสถิติ
-  authenticate, // ตรวจสอบ token ก่อน
-  authController.getUserStats // เรียกใช้เมธอด getUserStats
+  '/stats',
+  authenticate,
+  authController.getUserStats
 );
 
 /**
@@ -162,9 +225,9 @@ router.get(
  * @access  Private
  */
 router.get(
-  '/verify-token', // เส้นทางสำหรับตรวจสอบ token
-  authenticate, // ตรวจสอบ token ก่อน
-  authController.verifyToken // เรียกใช้เมธอด verifyToken
+  '/verify-token',
+  authenticate,
+  authController.verifyToken
 );
 
 // ส่งออก router เพื่อให้ไฟล์อื่นนำไปใช้งาน

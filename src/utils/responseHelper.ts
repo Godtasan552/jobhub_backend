@@ -203,6 +203,11 @@ export class ResponseHelper {
   maintenance(res: Response, message: string = 'Service temporarily unavailable'): void {
     this.error(res, message, 503);
   }
+
+  badRequest(res: Response, message: string = 'Bad request'): void {
+    this.error(res, message, 400);
+  }
+
 }
 
 // Export singleton instance

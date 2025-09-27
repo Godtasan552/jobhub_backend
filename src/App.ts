@@ -20,11 +20,13 @@ import jobRoutes from '../src/routers/jobs';
 import walletRoutes from '../src/routers/wallet';
 import chatRoutes from '../src/routers/chat';
 import notificationRoutes from '../src/routers/notification';
+import adminRoutes from '../src/routers/Admin'; // NEW: Admin routes
 
 // Import constants
 import { RATE_LIMITS, API_CONFIG } from '@/utils/constants';
 import serveFavicon from 'serve-favicon';
 import path from 'path';
+
 // Handle uncaught exceptions
 handleUncaughtException();
 
@@ -47,6 +49,7 @@ class App {
 
   private initializeMiddleware(): void {
     this.app.use(serveFavicon(path.join(__dirname, 'public', 'favicon.ico')));
+    
     // Security middleware
     this.app.use(helmet({
       contentSecurityPolicy: {
@@ -87,8 +90,8 @@ class App {
     }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-    // Rate limiting
-    const limiter = rateLimit({
+    // Rate limiting - Different limits for different routes
+    const generalLimiter = rateLimit({
       windowMs: RATE_LIMITS.API.WINDOW_MS,
       max: RATE_LIMITS.API.MAX_REQUESTS,
       message: {
@@ -99,7 +102,22 @@ class App {
       standardHeaders: true,
       legacyHeaders: false
     });
-    this.app.use('/api', limiter);
+
+    // Stricter rate limiting for admin routes
+    const adminLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // Lower limit for admin operations
+      message: {
+        success: false,
+        message: 'Too many admin requests, please try again later',
+        error: 'ADMIN_RATE_LIMIT_EXCEEDED'
+      },
+      standardHeaders: true,
+      legacyHeaders: false
+    });
+
+    this.app.use('/api', generalLimiter);
+    this.app.use('/api/*/admin', adminLimiter); // Apply to admin routes
 
     // Serve static files
     this.app.use('/uploads', express.static('uploads'));
@@ -123,11 +141,15 @@ class App {
     // API routes
     const apiRouter = express.Router();
     
+    // Public routes
     apiRouter.use('/auth', authRoutes);
     apiRouter.use('/jobs', jobRoutes);
     apiRouter.use('/wallet', walletRoutes);
     apiRouter.use('/chat', chatRoutes);
     apiRouter.use('/notifications', notificationRoutes);
+    
+    // Admin routes - Protected and separate
+    apiRouter.use('/admin', adminRoutes);
 
     this.app.use(API_CONFIG.BASE_PATH, apiRouter);
 
@@ -138,12 +160,42 @@ class App {
         version: '1.0.0',
         baseUrl: API_CONFIG.BASE_PATH,
         endpoints: {
+          // Public endpoints
           auth: `${API_CONFIG.BASE_PATH}/auth`,
           jobs: `${API_CONFIG.BASE_PATH}/jobs`,
           wallet: `${API_CONFIG.BASE_PATH}/wallet`,
           chat: `${API_CONFIG.BASE_PATH}/chat`,
-          notifications: `${API_CONFIG.BASE_PATH}/notifications`
+          notifications: `${API_CONFIG.BASE_PATH}/notifications`,
+          
+          // Admin endpoints
+          admin: {
+            base: `${API_CONFIG.BASE_PATH}/admin`,
+            dashboard: `${API_CONFIG.BASE_PATH}/admin/dashboard`,
+            workers: `${API_CONFIG.BASE_PATH}/admin/pending-workers`,
+            users: `${API_CONFIG.BASE_PATH}/admin/users`,
+            stats: `${API_CONFIG.BASE_PATH}/admin/stats`
+          }
+        },
+        authentication: {
+          type: 'Bearer Token',
+          header: 'Authorization: Bearer <token>',
+          adminAccess: 'Requires admin role in JWT token'
         }
+      });
+    });
+
+    // Admin status route (for monitoring)
+    this.app.get('/admin-status', (_req, res) => {
+      res.json({
+        success: true,
+        message: 'Admin panel is available',
+        endpoints: [
+          '/api/v1/admin/dashboard',
+          '/api/v1/admin/pending-workers',
+          '/api/v1/admin/users',
+          '/api/v1/admin/stats'
+        ],
+        authentication: 'Required: Admin role + Bearer token'
       });
     });
 
@@ -154,7 +206,15 @@ class App {
         message: 'Welcome to JobHub API',
         version: '1.0.0',
         documentation: '/api-docs',
-        health: '/health'
+        health: '/health',
+        adminPanel: '/admin-status',
+        features: [
+          'Multi-role authentication (Employer/Worker/Admin)',
+          'Job posting and application system',
+          'Real-time chat and notifications',
+          'Wallet and payment system',
+          'Admin panel for user management'
+        ]
       });
     });
   }
@@ -171,6 +231,7 @@ class App {
   }
 
   public async start(): Promise<void> {
+
     try {
       // Initialize database
       await initializeDatabase();
@@ -190,6 +251,8 @@ class App {
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
         console.log(`❤️  Health Check: http://localhost:${PORT}/health`);
+        console.log(`👑 Admin Panel: http://localhost:${PORT}/admin-status`);
+        console.log(`🔗 Admin API: http://localhost:${PORT}/api/v1/admin/*`);
       });
 
       // Setup graceful shutdown

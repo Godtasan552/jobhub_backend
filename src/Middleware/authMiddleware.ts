@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { JWTService } from '@/config/jwt';
-import { AuthRequest } from '@/types/index';
+import { AuthRequest, IUser } from '@/types/index';
 import User from '../Models/User';
 import { responseHelper } from '@/utils/responseHelper';
 
 /**
- * Middleware ตรวจสอบ JWT token ว่าถูกต้องหรือไม่
+ * Middleware ตรวจสอบ JWT token ว่าถูกต้องหรือไม่ - Updated for Multi-Role
  * - ดึง token จาก header
  * - ตรวจสอบ token ด้วย JWTService
  * - หา user จากฐานข้อมูล
@@ -42,6 +42,17 @@ export const authenticate = async (
       return;
     }
 
+    // ตรวจสอบว่า role ใน token ตรงกับ role ใน database หรือไม่
+    // (กรณี role ถูกเปลี่ยนแปลงหลังจาก token ออก)
+    const tokenRoles = decoded.role || [];
+    const userRoles = user.role || [];
+    
+    // อัปเดต token ถ้า role เปลี่ยนแปลง
+    if (JSON.stringify(tokenRoles.sort()) !== JSON.stringify(userRoles.sort())) {
+      // อาจจะส่ง signal ให้ client refresh token
+      // แต่ในตอนนี้ให้ใช้ role จาก database
+    }
+
     // เพิ่ม user เข้า req เพื่อใช้ใน controller ถัดไป
     req.user = user;
     next();
@@ -56,19 +67,24 @@ export const authenticate = async (
 };
 
 /**
- * Middleware ตรวจสอบ role ของ user
- * - รับ role ที่อนุญาตเป็น argument
- * - ถ้า user ไม่มี หรือ role ไม่ตรง จะตอบ error 401/403
+ * Middleware ตรวจสอบ role ของ user - Updated for Multi-Role
+ * - รับ roles ที่อนุญาตเป็น array
+ * - ตรวจสอบว่า user มี role ใดใน array หรือไม่
  */
-export const authorize = (...roles: string[]) => {
+export const authorize = (...roles: ('employer' | 'worker' | 'admin')[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       responseHelper.error(res, 'Authentication required', 401);
       return;
     }
 
-    if (!roles.includes(req.user.role)) {
-      responseHelper.error(res, 'Insufficient permissions', 403);
+    const user = req.user as IUser;
+    
+    // ตรวจสอบว่า user มี role ใดใน roles ที่อนุญาตหรือไม่
+    const hasRequiredRole = roles.some(role => user.role.includes(role));
+    
+    if (!hasRequiredRole) {
+      responseHelper.error(res, `Access denied. Required roles: ${roles.join(', ')}`, 403);
       return;
     }
 
@@ -77,7 +93,7 @@ export const authorize = (...roles: string[]) => {
 };
 
 /**
- * Middleware สำหรับ route ที่ไม่บังคับ login
+ * Middleware สำหรับ route ที่ไม่บังคับ login - Updated for Multi-Role
  * - ถ้ามี token และถูกต้อง จะเพิ่ม user เข้า req.user
  * - ถ้าไม่มี token หรือ token ผิด จะข้ามไปเลย
  */
@@ -107,14 +123,23 @@ export const optionalAuth = async (
 };
 
 /**
- * Middleware ตรวจสอบว่า user เป็นเจ้าของ resource หรือไม่
+ * Middleware ตรวจสอบว่า user เป็นเจ้าของ resource หรือไม่ - Updated
  * - รับชื่อ field ที่เก็บ userId ใน resource เป็น argument
  * - เช็คว่า user._id ตรงกับ userId ใน resource
+ * - Admin สามารถเข้าถึงได้ทุก resource
  */
 export const checkOwnership = (resourceUserField: string = 'userId') => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       responseHelper.error(res, 'Authentication required', 401);
+      return;
+    }
+
+    const user = req.user as IUser;
+    
+    // ถ้าเป็น admin ให้ผ่านไปเลย
+    if (user.role.includes('admin')) {
+      next();
       return;
     }
 
@@ -129,7 +154,7 @@ export const checkOwnership = (resourceUserField: string = 'userId') => {
     }
 
     // เช็คว่า user เป็นเจ้าของจริงหรือไม่
-    if (req.user._id.toString() !== resourceUserId) {
+    if (user._id.toString() !== resourceUserId) {
       responseHelper.error(res, 'Access denied: You can only access your own resources', 403);
       return;
     }
@@ -139,7 +164,7 @@ export const checkOwnership = (resourceUserField: string = 'userId') => {
 };
 
 /**
- * Middleware ตรวจสอบว่า user เป็น employer หรือไม่
+ * Middleware ตรวจสอบว่า user เป็น employer หรือไม่ - Updated for Multi-Role
  * - ใช้กับ route ที่เฉพาะ employer เท่านั้น
  */
 export const requireEmployer = (req: AuthRequest, res: Response, next: NextFunction): void => {
@@ -148,7 +173,9 @@ export const requireEmployer = (req: AuthRequest, res: Response, next: NextFunct
     return;
   }
 
-  if (req.user.role !== 'employer') {
+  const user = req.user as IUser;
+  
+  if (!user.role.includes('employer')) {
     responseHelper.error(res, 'Employer role required', 403);
     return;
   }
@@ -157,7 +184,7 @@ export const requireEmployer = (req: AuthRequest, res: Response, next: NextFunct
 };
 
 /**
- * Middleware ตรวจสอบว่า user เป็น worker หรือไม่
+ * Middleware ตรวจสอบว่า user เป็น worker หรือไม่ - Updated for Multi-Role
  * - ใช้กับ route ที่เฉพาะ worker เท่านั้น
  */
 export const requireWorker = (req: AuthRequest, res: Response, next: NextFunction): void => {
@@ -166,7 +193,9 @@ export const requireWorker = (req: AuthRequest, res: Response, next: NextFunctio
     return;
   }
 
-  if (req.user.role !== 'worker') {
+  const user = req.user as IUser;
+  
+  if (!user.role.includes('worker')) {
     responseHelper.error(res, 'Worker role required', 403);
     return;
   }
@@ -175,8 +204,71 @@ export const requireWorker = (req: AuthRequest, res: Response, next: NextFunctio
 };
 
 /**
- * Middleware ตรวจสอบสิทธิ์การเข้าถึงงาน (job)
+ * Middleware ตรวจสอบว่า user เป็น worker ที่ได้รับการอนุมัติแล้ว - NEW
+ */
+export const requireApprovedWorker = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    responseHelper.error(res, 'Authentication required', 401);
+    return;
+  }
+
+  const user = req.user as IUser;
+  
+  if (!user.role.includes('worker')) {
+    responseHelper.error(res, 'Worker role required', 403);
+    return;
+  }
+
+  if (!user.isWorkerApproved) {
+    responseHelper.error(res, 'Worker approval required. Please wait for admin approval.', 403);
+    return;
+  }
+
+  next();
+};
+
+/**
+ * Middleware ตรวจสอบว่า user เป็น admin หรือไม่ - NEW
+ */
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    responseHelper.error(res, 'Authentication required', 401);
+    return;
+  }
+
+  const user = req.user as IUser;
+  
+  if (!user.role.includes('admin')) {
+    responseHelper.error(res, 'Admin role required', 403);
+    return;
+  }
+
+  next();
+};
+
+/**
+ * Middleware ตรวจสอบว่า user เป็น super admin หรือไม่ - NEW
+ */
+export const requireSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    responseHelper.error(res, 'Authentication required', 401);
+    return;
+  }
+
+  const user = req.user as IUser;
+  
+  if (!user.role.includes('admin') || user.adminLevel !== 'super') {
+    responseHelper.error(res, 'Super Admin role required', 403);
+    return;
+  }
+
+  next();
+};
+
+/**
+ * Middleware ตรวจสอบสิทธิ์การเข้าถึงงาน (job) - Updated for Multi-Role
  * - user ต้องเป็น employer, worker หรือ applicant ของงานนั้น
+ * - Admin สามารถเข้าถึงได้ทุกงาน
  * - ถ้าเข้าได้ จะเพิ่ม job เข้า req.job
  */
 export const canAccessJob = async (
@@ -189,6 +281,8 @@ export const canAccessJob = async (
       responseHelper.error(res, 'Authentication required', 401);
       return;
     }
+
+    const user = req.user as IUser;
 
     // ดึง jobId จาก params
     const jobId = req.params.jobId || req.params.id;
@@ -206,8 +300,15 @@ export const canAccessJob = async (
       return;
     }
 
+    // ถ้าเป็น admin ให้ผ่านไปเลย
+    if (user.role.includes('admin')) {
+      (req as any).job = job;
+      next();
+      return;
+    }
+
     // เช็คสิทธิ์การเข้าถึง
-    const userId = req.user._id.toString();
+    const userId = user._id.toString();
     const canAccess = 
       job.employerId.toString() === userId || 
       job.workerId?.toString() === userId ||
@@ -224,6 +325,26 @@ export const canAccessJob = async (
   } catch (error) {
     responseHelper.error(res, 'Error checking job access', 500);
   }
+};
+
+/**
+ * Middleware ตรวจสอบว่า user สามารถสมัครงานได้หรือไม่ - NEW
+ */
+export const canApplyToJob = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    responseHelper.error(res, 'Authentication required', 401);
+    return;
+  }
+
+  const user = req.user as IUser;
+  
+  // ต้องเป็น worker ที่ได้รับการอนุมัติ
+  if (!user.role.includes('worker') || !user.isWorkerApproved) {
+    responseHelper.error(res, 'Only approved workers can apply to jobs', 403);
+    return;
+  }
+
+  next();
 };
 
 /**
@@ -265,7 +386,7 @@ export const authRateLimit = () => {
 };
 
 /**
- * Middleware ตรวจสอบความสมบูรณ์โปรไฟล์ของ user
+ * Middleware ตรวจสอบความสมบูรณ์โปรไฟล์ของ user - Updated
  * - ถ้า profileCompletion ต่ำกว่าที่กำหนด จะตอบ error
  */
 export const requireCompleteProfile = (minimumCompletion: number = 70) => {
@@ -275,7 +396,8 @@ export const requireCompleteProfile = (minimumCompletion: number = 70) => {
       return;
     }
 
-    const completion = (req.user as any).profileCompletion;
+    const user = req.user as IUser;
+    const completion = (user as any).profileCompletion || 0;
     
     if (completion < minimumCompletion) {
       responseHelper.error(
@@ -325,8 +447,56 @@ export const refreshUser = async (
 export const logActivity = (action: string) => {
   return (req: AuthRequest, _res: Response, next: NextFunction): void => {
     if (req.user) {
-      console.log(`User ${req.user._id} performed action: ${action} at ${new Date().toISOString()}`);
+      const user = req.user as IUser;
+      console.log(`User ${user._id} (roles: ${user.role.join(', ')}) performed action: ${action} at ${new Date().toISOString()}`);
     }
     next();
   };
 };
+
+/**
+ * Middleware ตรวจสอบว่า user มี role ใดใน roles ที่กำหนด (OR condition) - NEW
+ */
+export const requireAnyRole = (...roles: ('employer' | 'worker' | 'admin')[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      responseHelper.error(res, 'Authentication required', 401);
+      return;
+    }
+
+    const user = req.user as IUser;
+    const hasAnyRole = roles.some(role => user.role.includes(role));
+    
+    if (!hasAnyRole) {
+      responseHelper.error(res, `Access denied. Required roles: ${roles.join(' or ')}`, 403);
+      return;
+    }
+
+    next();
+  };
+};
+
+/**
+ * Middleware ตรวจสอบว่า user มีทุก roles ที่กำหนด (AND condition) - NEW
+ */
+export const requireAllRoles = (...roles: ('employer' | 'worker' | 'admin')[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      responseHelper.error(res, 'Authentication required', 401);
+      return;
+    }
+
+    const user = req.user as IUser;
+    const hasAllRoles = roles.every(role => user.role.includes(role));
+    
+    if (!hasAllRoles) {
+      responseHelper.error(res, `Access denied. All required roles needed: ${roles.join(' and ')}`, 403);
+      return;
+    }
+
+    next();
+  };
+};
+
+// Export alias สำหรับความเข้ากันได้กับ code เดิม
+export const authMiddleware = authenticate;

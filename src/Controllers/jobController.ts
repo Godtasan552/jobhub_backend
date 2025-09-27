@@ -1,37 +1,34 @@
-import { Response } from 'express'; // นำเข้า Response สำหรับตอบกลับ API
-import { AuthRequest } from '@/types/index'; // นำเข้า type ของ request ที่มี user
-import Job from '../Models/Job'; // นำเข้าโมเดล Job สำหรับจัดการงาน
-import { JobDocument } from '../Models/Job'; // นำเข้า type JobDocument สำหรับใช้งานกับ instance ของ Job
-import User from '../Models/User'; // นำเข้าโมเดล User สำหรับจัดการผู้ใช้
-import Milestone from '../Models/Milestone'; // นำเข้าโมเดล Milestone สำหรับจัดการ milestone
-import Notification from '../Models/Nontification'; // นำเข้าโมเดล Notification สำหรับแจ้งเตือน
-import { responseHelper } from '@/utils/responseHelper'; // นำเข้า helper สำหรับตอบกลับ API
-import { catchAsync } from '../Middleware/errorHandler'; // นำเข้า middleware สำหรับจัดการ error ใน async function
-import { SUCCESS_MESSAGES, ERROR_MESSAGES, JOB_CATEGORIES } from '@/utils/constants'; // นำเข้าข้อความคงที่
-import { SocketService } from '@/config/socket'; // นำเข้า service สำหรับ socket เพื่อแจ้งเตือนแบบ real-time
-// import { Document, Model, Types } from 'mongoose'; // นำเข้า type ของ mongoose
+import { Response } from 'express';
+import { AuthRequest, IUser } from '@/types/index';
+import Job from '../Models/Job';
+import { JobDocument } from '../Models/Job';
+import User from '../Models/User';
+import Milestone from '../Models/Milestone';
+import Notification from '../Models/Nontification';
+import { responseHelper } from '@/utils/responseHelper';
+import { catchAsync } from '../Middleware/errorHandler';
+import { SUCCESS_MESSAGES, ERROR_MESSAGES, JOB_CATEGORIES } from '@/utils/constants';
+import { SocketService } from '@/config/socket';
 
 export class JobController {
-  private socketService = SocketService.getInstance(); // สร้าง instance ของ socketService สำหรับส่ง notification
+  private socketService = SocketService.getInstance();
 
   /**
    * ดึงงานทั้งหมด พร้อม filter และ pagination
    */
   getAllJobs = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    // รับค่าจาก query string สำหรับ filter และ pagination
     const {
-      page = 1, // หน้าเริ่มต้น
-      limit = 10, // จำนวนงานต่อหน้า
-      search, // คำค้นหา
-      category, // หมวดหมู่งาน
-      type, // ประเภทงาน
-      minBudget, // งบขั้นต่ำ
-      maxBudget, // งบสูงสุด
-      status = 'active', // สถานะงาน
-      sort = '-createdAt' // การเรียงลำดับ
+      page = 1,
+      limit = 10,
+      search,
+      category,
+      type,
+      minBudget,
+      maxBudget,
+      status = 'active',
+      sort = '-createdAt'
     } = req.query;
 
-    // สร้าง options สำหรับ filter
     const options = {
       page: Number(page),
       limit: Number(limit),
@@ -44,12 +41,9 @@ export class JobController {
       status
     };
 
-    // เรียกใช้ method findWithFilters ในโมเดล Job เพื่อค้นหางานตาม filter
     const jobs = await (Job as any).findWithFilters({}, options);
-    // นับจำนวนงานทั้งหมดที่มีสถานะ active
     const total = await Job.countDocuments({ status: 'active' });
 
-    // ตอบกลับข้อมูลงานแบบ paginated
     responseHelper.paginated(
       res,
       SUCCESS_MESSAGES.DATA_RETRIEVED,
@@ -64,30 +58,34 @@ export class JobController {
    * ดึงงานตาม ID
    */
   getJobById = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
+    const { id } = req.params;
 
-    // ค้นหางานตาม id และ populate ข้อมูล employer, worker, milestones
     const job = await Job.findById(id)
       .populate('employerId', 'name email profilePic')
       .populate('workerId', 'name email profilePic')
       .populate('milestones');
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ตอบกลับข้อมูลงาน
     responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, job);
   });
 
   /**
-   * สร้างงานใหม่
+   * สร้างงานใหม่ - Updated: ตรวจสอบ employer role
    */
   createJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const employerId = req.user!._id; // รับ id ของผู้สร้างงานจาก user
-    // รับข้อมูลงานจาก body
+    const user = req.user! as IUser;
+    const employerId = user._id;
+
+    // ตรวจสอบว่าผู้ใช้เป็น employer หรือไม่
+    if (!user.role.includes('employer')) {
+      responseHelper.forbidden(res, 'Only employers can create jobs');
+      return;
+    }
+
     const {
       title,
       description,
@@ -100,7 +98,6 @@ export class JobController {
       attachments
     } = req.body;
 
-    // สร้าง instance งานใหม่
     const job = new Job({
       title,
       description,
@@ -115,12 +112,12 @@ export class JobController {
       status: 'active'
     });
 
-    // บันทึกงานลงฐานข้อมูล
     await job.save();
 
-    // ค้นหาผู้ใช้ที่เกี่ยวข้องกับงานนี้ (worker ที่มี category หรือ skill ตรงกับงาน)
+    // ค้นหา approved workers ที่เกี่ยวข้องกับงานนี้
     const relevantWorkers = await User.find({
       role: 'worker',
+      isWorkerApproved: true, // เฉพาะ worker ที่อนุมัติแล้ว
       $or: [
         { categories: { $in: [category] } },
         { skills: { $regex: new RegExp(title.split(' ').join('|'), 'i') } }
@@ -128,7 +125,7 @@ export class JobController {
       isActive: true
     }).limit(50);
 
-    // ส่ง notification ไปยัง worker ที่เกี่ยวข้อง
+    // ส่ง notification ไปยัง approved workers เท่านั้น
     for (const worker of relevantWorkers) {
       await (Notification as any).createJobNotification(
         worker._id,
@@ -138,7 +135,6 @@ export class JobController {
         `/jobs/${job._id}`
       );
 
-      // ส่ง notification แบบ real-time ผ่าน socket
       this.socketService.sendNotificationToUser(worker._id.toString(), {
         type: 'job',
         title: 'New Job Available',
@@ -147,34 +143,39 @@ export class JobController {
       });
     }
 
-    // ตอบกลับว่าสร้างงานสำเร็จ
     responseHelper.created(res, SUCCESS_MESSAGES.JOB_CREATED, job);
   });
 
   /**
-   * อัพเดทงาน
+   * อัพเดทงาน - Updated: ตรวจสอบ ownership หรือ admin
    */
   updateJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
-    const updates = req.body; // รับข้อมูลที่ต้องการอัพเดท
+    const { id } = req.params;
+    const user = req.user! as IUser;
+    const updates = req.body;
 
-    // ค้นหางานที่ต้องการอัพเดท
-    const job = await Job.findOne({ _id: id, employerId }) as JobDocument | null;
+    // ค้นหางาน
+    const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ถ้างานไม่สามารถแก้ไขได้ ตอบกลับ error
-    if (!job.isEditable()) {
+    // ตรวจสอบสิทธิ์: เจ้าของงาน หรือ admin
+    const isOwner = job.employerId.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isOwner && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. You can only edit your own jobs.');
+      return;
+    }
+
+    if (!job.isEditable() && !isAdmin) {
       responseHelper.error(res, ERROR_MESSAGES.JOB_NOT_EDITABLE, 400);
       return;
     }
 
-    // อัพเดทข้อมูลงาน
     Object.assign(job, updates);
     await job.save();
 
@@ -191,28 +192,34 @@ export class JobController {
       }
     }
 
-    // ตอบกลับว่างานถูกอัพเดทแล้ว
     responseHelper.success(res, SUCCESS_MESSAGES.JOB_UPDATED, job);
   });
 
   /**
-   * ลบงาน
+   * ลบงาน - Updated: ตรวจสอบ ownership หรือ admin
    */
   deleteJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
+    const { id } = req.params;
+    const user = req.user! as IUser;
 
-    // ค้นหางานที่ต้องการลบ
-    const job = await Job.findOne({ _id: id, employerId }) as JobDocument | null;
+    const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ถ้างานกำลังดำเนินการอยู่ ไม่สามารถลบได้
-    if (job.status === 'in_progress') {
+    // ตรวจสอบสิทธิ์: เจ้าของงาน หรือ admin
+    const isOwner = job.employerId.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isOwner && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. You can only delete your own jobs.');
+      return;
+    }
+
+    // Admin สามารถลบงานได้แม้จะ in_progress
+    if (job.status === 'in_progress' && !isAdmin) {
       responseHelper.error(res, 'Cannot delete job in progress', 400);
       return;
     }
@@ -228,40 +235,51 @@ export class JobController {
       );
     }
 
-    // ลบงานออกจากฐานข้อมูล
     await Job.findByIdAndDelete(id);
 
-    // ตอบกลับว่างานถูกลบแล้ว
     responseHelper.success(res, SUCCESS_MESSAGES.JOB_DELETED);
   });
 
   /**
-   * สมัครงาน
+   * สมัครงาน - Updated: ตรวจสอบ approved worker
    */
   applyToJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const workerId = req.user!._id; // รับ id ของผู้สมัครงาน
+    const { id } = req.params;
+    const user = req.user! as IUser;
+    const workerId = user._id;
 
-    // ค้นหางานที่ต้องการสมัคร
+    // ตรวจสอบว่าเป็น approved worker หรือไม่
+    if (!user.role.includes('worker')) {
+      responseHelper.forbidden(res, 'Only workers can apply to jobs');
+      return;
+    }
+
+    if (!user.isWorkerApproved) {
+      responseHelper.forbidden(res, 'Worker approval required. Please wait for admin approval.');
+      return;
+    }
+
     const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ตรวจสอบว่าผู้ใช้สามารถสมัครงานนี้ได้หรือไม่
+    // ตรวจสอบว่าไม่ใช่เจ้าของงาน
+    if (job.employerId.toString() === workerId.toString()) {
+      responseHelper.error(res, 'Cannot apply to your own job', 400);
+      return;
+    }
+
     if (!job.canUserApply(workerId)) {
       responseHelper.error(res, 'Cannot apply to this job', 400);
       return;
     }
 
-    // เพิ่มผู้สมัครลงใน applicants
     job.addApplicant(workerId);
     await job.save();
 
-    // แจ้งเตือน employer ว่ามีคนสมัครงาน
     await (Notification as any).createJobNotification(
       job.employerId,
       job._id,
@@ -270,7 +288,6 @@ export class JobController {
       `/jobs/${job._id}/applications`
     );
 
-    // ส่ง notification แบบ real-time ผ่าน socket
     this.socketService.sendNotificationToUser(job.employerId.toString(), {
       type: 'job',
       title: 'New Application',
@@ -278,28 +295,33 @@ export class JobController {
       data: { jobId: job._id }
     });
 
-    // ตอบกลับว่าสมัครงานสำเร็จ
     responseHelper.success(res, SUCCESS_MESSAGES.JOB_APPLICATION_SUBMITTED);
   });
 
   /**
-   * ดึงข้อมูลผู้สมัครงาน
+   * ดึงข้อมูลผู้สมัครงาน - Updated: ตรวจสอบ ownership หรือ admin
    */
   getJobApplications = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
+    const { id } = req.params;
+    const user = req.user! as IUser;
 
-    // ค้นหางานและ populate ข้อมูลผู้สมัคร
-    const job = await Job.findOne({ _id: id, employerId })
+    const job = await Job.findById(id)
       .populate('applicants', 'name email profilePic skills categories') as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ตอบกลับข้อมูลผู้สมัครงาน
+    // ตรวจสอบสิทธิ์: เจ้าของงาน หรือ admin
+    const isOwner = job.employerId.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isOwner && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. Only job owner or admin can view applications.');
+      return;
+    }
+
     responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, {
       job: {
         id: job._id,
@@ -311,38 +333,48 @@ export class JobController {
   });
 
   /**
-   * มอบหมายงานให้ worker
+   * มอบหมายงานให้ worker - Updated: ตรวจสอบ ownership หรือ admin
    */
   assignJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const { workerId } = req.body; // รับ id ของ worker ที่จะมอบหมายงาน
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
+    const { id } = req.params;
+    const { workerId } = req.body;
+    const user = req.user! as IUser;
 
-    // ค้นหางานที่ต้องการมอบหมาย
-    const job = await Job.findOne({ _id: id, employerId }) as JobDocument | null;
+    const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ตรวจสอบว่างานยัง active อยู่หรือไม่
+    // ตรวจสอบสิทธิ์: เจ้าของงาน หรือ admin
+    const isOwner = job.employerId.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isOwner && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. Only job owner or admin can assign jobs.');
+      return;
+    }
+
     if (job.status !== 'active') {
       responseHelper.error(res, 'Job is not active', 400);
       return;
     }
 
-    // ตรวจสอบว่า worker ได้สมัครงานนี้หรือไม่
     if (!job.applicants.includes(workerId)) {
       responseHelper.error(res, 'Worker has not applied to this job', 400);
       return;
     }
 
-    // มอบหมายงานให้ worker
+    // ตรวจสอบว่า worker ยังเป็น approved worker อยู่หรือไม่
+    const worker = await User.findById(workerId);
+    if (!worker || !worker.role.includes('worker') || !worker.isWorkerApproved) {
+      responseHelper.error(res, 'Worker is not approved or no longer active', 400);
+      return;
+    }
+
     await job.assignWorker(workerId);
 
-    // แจ้งเตือน worker ที่ได้รับมอบหมายงาน
     await (Notification as any).createJobNotification(
       workerId,
       job._id,
@@ -364,7 +396,6 @@ export class JobController {
       }
     }
 
-    // ส่ง notification แบบ real-time ผ่าน socket
     this.socketService.sendNotificationToUser(workerId, {
       type: 'job',
       title: 'Job Assigned',
@@ -372,36 +403,39 @@ export class JobController {
       data: { jobId: job._id }
     });
 
-    // ตอบกลับว่างานถูกมอบหมายแล้ว
     responseHelper.success(res, SUCCESS_MESSAGES.JOB_ASSIGNED);
   });
 
   /**
-   * ทำงานให้เสร็จสิ้น
+   * ทำงานให้เสร็จสิ้น - Updated: ตรวจสอบ assigned worker หรือ admin
    */
   completeJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const workerId = req.user!._id; // รับ id worker
+    const { id } = req.params;
+    const user = req.user! as IUser;
 
-    // ค้นหางานที่ต้องการทำให้เสร็จ
-    const job = await Job.findOne({ _id: id, workerId }) as JobDocument | null;
+    const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ตรวจสอบว่างานอยู่ในสถานะ in_progress หรือไม่
+    // ตรวจสอบสิทธิ์: assigned worker หรือ admin
+    const isAssignedWorker = job.workerId?.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isAssignedWorker && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. Only assigned worker or admin can complete jobs.');
+      return;
+    }
+
     if (job.status !== 'in_progress') {
       responseHelper.error(res, 'Job is not in progress', 400);
       return;
     }
 
-    // ทำงานให้เสร็จสิ้น
     await job.completeJob();
 
-    // แจ้งเตือน employer ว่างานเสร็จแล้ว
     await (Notification as any).createJobNotification(
       job.employerId,
       job._id,
@@ -410,7 +444,6 @@ export class JobController {
       `/jobs/${job._id}`
     );
 
-    // ส่ง notification แบบ real-time ผ่าน socket
     this.socketService.sendNotificationToUser(job.employerId.toString(), {
       type: 'job',
       title: 'Job Completed',
@@ -418,30 +451,34 @@ export class JobController {
       data: { jobId: job._id }
     });
 
-    // ตอบกลับว่างานเสร็จสิ้นแล้ว
     responseHelper.success(res, SUCCESS_MESSAGES.JOB_COMPLETED);
   });
 
   /**
-   * ยกเลิกงาน
+   * ยกเลิกงาน - Updated: ตรวจสอบ ownership หรือ admin
    */
   cancelJob = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
+    const { id } = req.params;
+    const user = req.user! as IUser;
 
-    // ค้นหางานที่ต้องการยกเลิก
-    const job = await Job.findOne({ _id: id, employerId }) as JobDocument | null;
+    const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ยกเลิกงาน
+    // ตรวจสอบสิทธิ์: เจ้าของงาน หรือ admin
+    const isOwner = job.employerId.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isOwner && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. Only job owner or admin can cancel jobs.');
+      return;
+    }
+
     await job.cancelJob();
 
-    // แจ้งเตือน worker ถ้ามีการมอบหมายงาน
     if (job.workerId) {
       await (Notification as any).createJobNotification(
         job.workerId,
@@ -452,7 +489,6 @@ export class JobController {
       );
     }
 
-    // ตอบกลับว่างานถูกยกเลิกแล้ว
     responseHelper.success(res, 'Job cancelled successfully');
   });
 
@@ -460,39 +496,42 @@ export class JobController {
    * ดึง milestone ของงาน
    */
   getJobMilestones = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
+    const { id } = req.params;
 
-    // ค้นหา milestone ที่เกี่ยวข้องกับงานนี้
     const milestones = await Milestone.find({ jobId: id });
 
-    // ตอบกลับข้อมูล milestone
     responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, milestones);
   });
 
   /**
-   * สร้าง milestone ให้กับงาน
+   * สร้าง milestone ให้กับงาน - Updated: ตรวจสอบ ownership หรือ admin
    */
   createMilestone = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { id } = req.params; // รับ id งานจาก params
-    const { title, description, amount, dueDate } = req.body; // รับข้อมูล milestone จาก body
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
+    const { id } = req.params;
+    const { title, description, amount, dueDate } = req.body;
+    const user = req.user! as IUser;
 
-    // ค้นหางานที่ต้องการเพิ่ม milestone
-    const job = await Job.findOne({ _id: id, employerId }) as JobDocument | null;
+    const job = await Job.findById(id) as JobDocument | null;
 
-    // ถ้าไม่เจองาน ตอบกลับว่าไม่พบ
     if (!job) {
       responseHelper.notFound(res, ERROR_MESSAGES.JOB_NOT_FOUND);
       return;
     }
 
-    // ตรวจสอบว่างานเป็นประเภท contract หรือไม่
+    // ตรวจสอบสิทธิ์: เจ้าของงาน หรือ admin
+    const isOwner = job.employerId.toString() === user._id.toString();
+    const isAdmin = user.role.includes('admin');
+
+    if (!isOwner && !isAdmin) {
+      responseHelper.forbidden(res, 'Access denied. Only job owner or admin can create milestones.');
+      return;
+    }
+
     if (job.type !== 'contract') {
       responseHelper.error(res, 'Milestones can only be created for contract jobs', 400);
       return;
     }
 
-    // สร้าง milestone ใหม่
     const milestone = new Milestone({
       jobId: id,
       title,
@@ -501,14 +540,11 @@ export class JobController {
       dueDate
     });
 
-    // บันทึก milestone ลงฐานข้อมูล
     await milestone.save();
 
-    // เพิ่ม milestone เข้าไปในงาน
     job.addMilestone(milestone._id.toString());
     await job.save();
 
-    // แจ้งเตือน worker ถ้ามีการมอบหมายงาน
     if (job.workerId) {
       await (Notification as any).createMilestoneNotification(
         job.workerId,
@@ -519,31 +555,33 @@ export class JobController {
       );
     }
 
-    // ตอบกลับว่าสร้าง milestone สำเร็จ
     responseHelper.created(res, SUCCESS_MESSAGES.MILESTONE_CREATED, milestone);
   });
 
   /**
-   * ดึงงานที่ผู้ใช้สร้างเอง
+   * ดึงงานที่ผู้ใช้สร้างเอง - Updated: รองรับ employer role
    */
   getMyCreatedJobs = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const employerId = req.user!._id; // รับ id ผู้สร้างงาน
-    const { page = 1, limit = 10, status } = req.query; // รับค่าจาก query
+    const user = req.user! as IUser;
+    const { page = 1, limit = 10, status } = req.query;
 
-    let query: any = { employerId };
+    // ตรวจสอบว่าเป็น employer หรือไม่
+    if (!user.role.includes('employer')) {
+      responseHelper.forbidden(res, 'Only employers can view created jobs');
+      return;
+    }
+
+    let query: any = { employerId: user._id };
     if (status) query.status = status;
 
-    // ค้นหางานที่ผู้ใช้สร้างเอง
     const jobs = await Job.find(query)
       .populate('workerId', 'name email profilePic')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
 
-    // นับจำนวนงานทั้งหมด
     const total = await Job.countDocuments(query);
 
-    // ตอบกลับข้อมูลงานแบบ paginated
     responseHelper.paginated(
       res,
       SUCCESS_MESSAGES.DATA_RETRIEVED,
@@ -555,23 +593,26 @@ export class JobController {
   });
 
   /**
-   * ดึงงานที่ผู้ใช้สมัครเอง
+   * ดึงงานที่ผู้ใช้สมัครเอง - Updated: รองรับ worker role
    */
   getMyAppliedJobs = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const workerId = req.user!._id; // รับ id worker
-    const { page = 1, limit = 10 } = req.query; // รับค่าจาก query
+    const user = req.user! as IUser;
+    const { page = 1, limit = 10 } = req.query;
 
-    // ค้นหางานที่ผู้ใช้สมัครเอง
-    const jobs = await Job.find({ applicants: workerId })
+    // ตรวจสอบว่าเป็น worker หรือไม่
+    if (!user.role.includes('worker')) {
+      responseHelper.forbidden(res, 'Only workers can view applied jobs');
+      return;
+    }
+
+    const jobs = await Job.find({ applicants: user._id })
       .populate('employerId', 'name email profilePic')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
 
-    // นับจำนวนงานทั้งหมดที่สมัคร
-    const total = await Job.countDocuments({ applicants: workerId });
+    const total = await Job.countDocuments({ applicants: user._id });
 
-    // ตอบกลับข้อมูลงานแบบ paginated
     responseHelper.paginated(
       res,
       SUCCESS_MESSAGES.DATA_RETRIEVED,
@@ -583,16 +624,21 @@ export class JobController {
   });
 
   /**
-   * ดึงงานที่ถูกมอบหมายให้ผู้ใช้
+   * ดึงงานที่ถูกมอบหมายให้ผู้ใช้ - Updated: รองรับ worker role
    */
   getMyAssignedJobs = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const workerId = req.user!._id; // รับ id worker
-    const { page = 1, limit = 10, status } = req.query; // รับค่าจาก query
+    const user = req.user! as IUser;
+    const { page = 1, limit = 10, status } = req.query;
 
-    let query: any = { workerId };
+    // ตรวจสอบว่าเป็น worker หรือไม่
+    if (!user.role.includes('worker')) {
+      responseHelper.forbidden(res, 'Only workers can view assigned jobs');
+      return;
+    }
+
+    let query: any = { workerId: user._id };
     if (status) query.status = status;
 
-    // ค้นหางานที่ถูกมอบหมายให้ผู้ใช้
     const jobs = await Job.find(query)
       .populate('employerId', 'name email profilePic')
       .populate('milestones')
@@ -600,10 +646,8 @@ export class JobController {
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
 
-    // นับจำนวนงานทั้งหมดที่ถูกมอบหมาย
     const total = await Job.countDocuments(query);
 
-    // ตอบกลับข้อมูลงานแบบ paginated
     responseHelper.paginated(
       res,
       SUCCESS_MESSAGES.DATA_RETRIEVED,
@@ -618,7 +662,6 @@ export class JobController {
    * ดึงหมวดหมู่งานยอดนิยม
    */
   getJobCategories = catchAsync(async (_req: AuthRequest, res: Response): Promise<void> => {
-    // ใช้ aggregate เพื่อรวมจำนวนงานแต่ละหมวดหมู่
     const categories = await Job.aggregate([
       { $match: { status: 'active' } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
@@ -626,13 +669,11 @@ export class JobController {
       { $limit: 20 }
     ]);
 
-    // แปลงข้อมูลให้อยู่ในรูปแบบที่ต้องการ
     const formattedCategories = categories.map(cat => ({
       name: cat._id,
       count: cat.count
     }));
 
-    // ตอบกลับข้อมูลหมวดหมู่งาน
     responseHelper.success(res, SUCCESS_MESSAGES.DATA_RETRIEVED, {
       popular: formattedCategories,
       all: JOB_CATEGORIES
@@ -643,12 +684,11 @@ export class JobController {
    * ค้นหางาน
    */
   searchJobs = catchAsync(async (req: AuthRequest, res: Response): Promise<void> => {
-    const { q, page = 1, limit = 10, category, type, minBudget, maxBudget } = req.query; // รับค่าจาก query
+    const { q, page = 1, limit = 10, category, type, minBudget, maxBudget } = req.query;
 
-    const searchQuery = q as string; // กำหนด searchQuery จาก q
-    const jobs = await (Job as any).searchJobs(searchQuery); // ค้นหางานด้วย searchJobs
+    const searchQuery = q as string;
+    const jobs = await (Job as any).searchJobs(searchQuery);
 
-    // กรองงานเพิ่มเติมตาม category, type, budget
     let filteredJobs = jobs;
     if (category) {
       filteredJobs = filteredJobs.filter((job: any) => 
@@ -668,11 +708,9 @@ export class JobController {
       filteredJobs = filteredJobs.filter((job: any) => job.budget <= Number(maxBudget));
     }
 
-    // ทำ pagination
     const skip = (Number(page) - 1) * Number(limit);
     const paginatedJobs = filteredJobs.slice(skip, skip + Number(limit));
 
-    // ตอบกลับข้อมูลงานแบบ paginated
     responseHelper.paginated(
       res,
       SUCCESS_MESSAGES.DATA_RETRIEVED,
